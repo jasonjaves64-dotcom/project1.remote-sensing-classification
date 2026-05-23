@@ -1,0 +1,69 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Model checkpoints
+*.pth
+*.onnx
+*.onnx.data
+checkpoints/
+
+# Data (large files)
+*.npy
+data/processed/
+data/raw/
+test_data/
+
+# Output
+output/
+*.png
+*.jpg
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+
+# PyInstaller
+*.spec
+!CropClassifier.spec
+
+# Logs
+logs/
+test_logs/
+*.log
+
+# ArcGIS exports
+arcgis_exports/
+arcgis_exports_edl/
+
+# Test output
+test_output/
+
+# Temporary
+*.tmp
+*.temp
+# Coverage
+.coverage
+htmlcov/
+
+# Superpowers
+.superpowers/
+
+# Pretrained weights (too large for GitHub)
+pretrained_weights/
+
+# ArcGIS exports
+arcgis_exports_final/
+
+# Environment
+.env
+.env.local
+
+# PyInstaller
+*.spec

@@ -1,0 +1,74 @@
+[build-system]
+requires = ["setuptools>=65.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "crop-classification"
+version = "2.0.0"
+description = "基于深度学习的遥感影像作物分类系统 - 集成EDL-Ensemble不确定性估计框架"
+authors = ["Your Name <your@email.com>"]
+license = "MIT"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+    "Topic :: Remote Sensing",
+]
+
+[project.dependencies]
+torch = ">=2.2.0"
+torchvision = ">=0.17.0"
+numpy = ">=1.24.0"
+matplotlib = ">=3.8.0"
+streamlit = ">=1.30.0"
+rasterio = ">=1.3.9"
+pyyaml = ">=6.0"
+tqdm = ">=4.66.0"
+scikit-learn = ">=1.3.0"
+scikit-image = ">=0.22.0"
+timm = ">=0.9.12"
+pillow = ">=10.0.0"
+fastapi = ">=0.109.0"
+uvicorn = ">=0.27.0"
+onnx = ">=1.15.0"
+onnxruntime = ">=1.16.0"
+mysql-connector-python = ">=8.3.0"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "mypy>=1.7.0",
+    "seaborn>=0.13.0",
+    "pandas>=2.1.0",
+    "xarray>=2023.1.0",
+    "ray>=2.8.0",
+    "PyQt5>=5.15.9",
+    "earthengine-api>=0.1.400",
+    "geemap>=0.29.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+exclude = ["tests*", "docs*"]
+
+[tool.setuptools.scripts]
+start = "start.py"
+install = "install.py"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = ["-v", "--tb=short", "-m", "not slow"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
+
+[tool.mypy]
+python_version = "3.10"
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true

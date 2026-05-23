@@ -1,0 +1,87 @@
+data:
+  raw_dir: ./data/raw
+  landsat_dir: ./data/raw/landsat/2023
+  sar_dir: ./data/raw/sentinel1/2023
+  label_dir: ./data/raw/labels
+  processed_dir: ./data/processed
+  output_dir: ./output
+  checkpoint_dir: ./checkpoints
+
+model:
+  version: v5
+  opt_channels: 10
+  sar_channels: 5
+  dem_channels: 5
+  num_classes: 7
+  feat_dim: 512
+  backbone: resnet50
+  pretrained: true
+  n_heads: 16
+  win_size: 4
+  n_layers: 4
+  drop_timestep_p: 0.1
+
+edl:
+  enabled: true
+  dropout_p: 0.3
+  lambda_max: 0.5
+  anneal_ep: 50
+  n_passes: 5
+
+training:
+  batch_size: 8
+  patch_size: 32
+  epochs_p1: 20
+  epochs_p2: 60
+  lr_p1: 0.001
+  lr_p2: 0.0003
+  weight_decay: 0.0001
+  val_split: 0.15
+  use_spatial_split: false
+  grad_clip_value: 5.0
+  grad_accum_steps: 4
+  use_amp: true
+  tb_log_dir: ./logs/tensorboard
+  resume_from: ""
+  resume_phase: 1
+
+inference:
+  patch_size: 32
+  overlap: 0.5
+  batch_size: 16
+  use_tta: true
+
+visualization:
+  save_fig: true
+  fig_dpi: 150
+
+crop_classes:
+  0: 背景
+  1: 冬小麦
+  2: 夏玉米
+  3: 水稻
+  4: 大豆
+  5: 棉花
+  6: 其他作物
+
+gee:
+  project_id: your-gee-project-id
+  study_area:
+    lon_min: 115.0
+    lat_min: 36.0
+    lon_max: 117.0
+    lat_max: 38.0
+  year: 2023
+  crs: EPSG:32650
+
+preprocessing:
+  apply_terrain_correction: false
+  terrain_correction_method: minnaert
+  dem_path: ./data/dem/dem_30m.tif
+  purity_threshold: 0.8
+  split_block_size: 64
+  max_cloud_pct: 0.5
+  min_valid_observations: 4
+  interpolation_method: linear
+  normalization_strategy: standard
+  spatial_split_kfold: 5

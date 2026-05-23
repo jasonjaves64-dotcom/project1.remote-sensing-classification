@@ -1,0 +1,139 @@
+.main-header {
+    font-size: 2.5rem;
+    font-weight: bold;
+    color: #2E7D32;
+    text-align: center;
+    margin-bottom: 2rem;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.sub-header {
+    font-size: 1.2rem;
+    color: #558B2F;
+    margin-top: 1.5rem;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+}
+
+.success-box {
+    background-color: #E8F5E9;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    margin-bottom: 1rem;
+    border-left: 4px solid #2E7D32;
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+.info-box {
+    background-color: #E3F2FD;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    margin-bottom: 1rem;
+    border-left: 4px solid #1976D2;
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+.warning-box {
+    background-color: #FFF3E0;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    margin-bottom: 1rem;
+    border-left: 4px solid #FF9800;
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.stProgress > div > div > div > div {
+    background-color: #2E7D32 !important;
+    border-radius: 4px;
+}
+
+.stButton > button {
+    border-radius: 8px;
+    transition: all 0.3s ease;
+}
+
+.stButton > button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.stButton > button:active {
+    transform: translateY(0);
+}
+
+.stSelectbox > div > div {
+    border-radius: 8px;
+}
+
+.stSlider > div > div > div > div {
+    background-color: #558B2F;
+}
+
+.stTabs > div > div {
+    background-color: rgba(255, 255, 255, 0.8);
+    border-radius: 8px 8px 0 0;
+}
+
+.stTabs [data-baseweb="tab"] {
+    font-weight: 500;
+    color: #558B2F;
+}
+
+.stTabs [data-baseweb="tab"][aria-selected="true"] {
+    color: #2E7D32;
+    border-bottom: 3px solid #2E7D32;
+}
+
+.expander {
+    border-radius: 8px;
+    border: 1px solid #E0E0E0;
+}
+
+.expander:hover {
+    border-color: #558B2F;
+}
+
+.stSidebar {
+    background: linear-gradient(180deg, #F1F8E9 0%, #E8F5E9 100%);
+}
+
+.stSidebar .stHeader {
+    color: #2E7D32;
+    font-weight: 600;
+}
+
+div[data-testid="stImage"] img {
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+div[data-testid="stPlotlyChart"], div[data-testid="stMatplotlibChart"] {
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.stDownloadButton > button {
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    transition: all 0.3s ease;
+}
+
+.stDownloadButton > button:hover {
+    background-color: #45a049;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+}

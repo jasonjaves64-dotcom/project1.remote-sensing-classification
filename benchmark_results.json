@@ -1,0 +1,91 @@
+{
+  "baseline": {
+    "name": "BASELINE (no cache)",
+    "pass1_cold": {
+      "total_samples": 80,
+      "total_batches": 10,
+      "elapsed_seconds": 0.026,
+      "throughput_samples_per_sec": 3113.3,
+      "avg_batch_time_ms": 2.57
+    },
+    "pass2_warm": {
+      "total_samples": 80,
+      "total_batches": 10,
+      "elapsed_seconds": 0.021,
+      "throughput_samples_per_sec": 3880.2,
+      "avg_batch_time_ms": 2.06
+    },
+    "pass3_hot": {
+      "total_samples": 80,
+      "total_batches": 10,
+      "elapsed_seconds": 0.019,
+      "throughput_samples_per_sec": 4156.3,
+      "avg_batch_time_ms": 1.92
+    },
+    "cache_stats": null,
+    "cold_cache_stats": null
+  },
+  "cached": {
+    "name": "CACHED (tiered LRU)",
+    "pass1_cold": {
+      "total_samples": 80,
+      "total_batches": 10,
+      "elapsed_seconds": 0.051,
+      "throughput_samples_per_sec": 1562.2,
+      "avg_batch_time_ms": 5.12
+    },
+    "pass2_warm": {
+      "total_samples": 80,
+      "total_batches": 10,
+      "elapsed_seconds": 0.009,
+      "throughput_samples_per_sec": 8710.0,
+      "avg_batch_time_ms": 0.92
+    },
+    "pass3_hot": {
+      "total_samples": 80,
+      "total_batches": 10,
+      "elapsed_seconds": 0.008,
+      "throughput_samples_per_sec": 10273.3,
+      "avg_batch_time_ms": 0.78
+    },
+    "cache_stats": {
+      "hits": 208,
+      "misses": 0,
+      "hot_hits": 208,
+      "warm_hits": 0,
+      "cold_reads": 0,
+      "evictions": 0,
+      "warm_promotions": 0,
+      "hit_rate": 1.0,
+      "avg_access_time_ms": 0.0,
+      "total_accesses": 208
+    },
+    "cold_cache_stats": {
+      "hits": 24,
+      "misses": 80,
+      "hot_hits": 24,
+      "warm_hits": 0,
+      "cold_reads": 80,
+      "evictions": 0,
+      "warm_promotions": 0,
+      "hit_rate": 0.2308,
+      "avg_access_time_ms": 0.51,
+      "total_accesses": 104
+    }
+  },
+  "improvement": {
+    "baseline_warm_throughput": 3880.2,
+    "cached_hot_throughput": 10273.3,
+    "improvement_pct": 164.8,
+    "target_met": true
+  },
+  "async_preloader": {
+    "throughput_samples_per_sec": 1399.2,
+    "prefetch_hit_rate": 0.0
+  },
+  "acceptance": {
+    "throughput_30pct_improvement": true,
+    "cache_hit_rate_80pct": true,
+    "all_passed": true
+  }
+}
