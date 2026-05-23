@@ -83,10 +83,11 @@ def main():
     has_sar = os.path.exists(os.path.join(os.path.dirname(args.input_path), "sar_sequence.npy"))
     has_dem = os.path.exists(os.path.join(os.path.dirname(args.input_path), "dem.npy"))
 
+    data_quality = {"sar_available": has_sar, "dem_available": has_dem}
     if not has_sar:
-        print("Warning: SAR data not found, using zeros (SAR encoder will receive placeholder)")
+        print("⚠ Warning: SAR data not found — using zeros (SAR encoder will receive placeholder). Prediction quality may degrade.")
     if not has_dem:
-        print("Warning: DEM data not found, using zeros (DEM encoder will receive placeholder)")
+        print("⚠ Warning: DEM data not found — using zeros (DEM encoder will receive placeholder). Prediction quality may degrade.")
 
     sample = pipeline.process(
         {

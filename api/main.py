@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 import logging
@@ -111,7 +111,8 @@ class InferenceRequest(BaseModel):
     n_passes: int = Field(1, ge=1, le=20, description="推理次数")
     use_tta: bool = Field(False, description="是否使用TTA")
     
-    @validator('opt_sequence')
+    @field_validator('opt_sequence')
+    @classmethod
     def check_opt_shape(cls, v):
         if len(v) == 0:
             raise ValueError("光学序列不能为空")
@@ -170,30 +171,18 @@ class TaskResponse(BaseModel):
     task_id: str
     message: str
 
-# 启动时加载模型
+# 启动时初始化管道（模型延迟加载）
 @app.on_event("startup")
 async def startup_event():
-    global MODEL, PIPELINE, MODEL_LOADED
+    global PIPELINE
     try:
-        log_info("正在加载模型...")
-        
-        MODEL = FusionCropNetV5EDL(
-            opt_ch=10, sar_ch=5, dem_ch_in=5, num_classes=7,
-            feat_dim=512, backbone="resnet50", pretrained=False,
-            n_heads=16, win_size=4, n_layers=4
-        ).to(DEVICE)
-        
         config = PreprocessConfig(
             normalize=True, freeze_stats=True, sar_log_transform=True, augment=False
         )
         PIPELINE = PreprocessPipeline(config)
-        
-        MODEL.eval()
-        MODEL_LOADED = True
-        log_info("模型加载成功")
+        log_info("预处理管道初始化成功")
     except Exception as e:
-        log_error("模型加载失败", exception=e)
-        MODEL_LOADED = False
+        log_error("管道初始化失败", exception=e)
 
 # 健康检查
 @app.get("/health", tags=["健康检查"])
@@ -399,12 +388,32 @@ async def calculate_model_metrics(request: Request, predictions: List[List[int]]
 
 # 异步训练任务
 async def run_training(data_path: str, epochs: int, batch_size: int, lr: float):
-    """后台训练任务"""
+    """后台训练任务 — 调用 scripts/train_fusion_edl.py"""
+    import subprocess
     log_info("开始训练任务", data_path=data_path, epochs=epochs, batch_size=batch_size, lr=lr)
-    
-    await asyncio.sleep(10)  # 模拟训练
-    
-    log_info("训练任务完成", data_path=data_path)
+
+    script = Path(__file__).parent.parent / "scripts" / "train_fusion_edl.py"
+    if not script.exists():
+        log_error("训练脚本不存在", path=str(script))
+        return
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, str(script),
+            "--data_path", data_path,
+            "--epochs", str(epochs),
+            "--batch_size", str(batch_size),
+            "--lr", str(lr),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode == 0:
+            log_info("训练任务完成", data_path=data_path)
+        else:
+            log_error("训练任务失败", stderr=stderr.decode()[:500])
+    except Exception as e:
+        log_error("训练任务异常", exception=e)
 
 @app.post("/train", response_model=TaskResponse, tags=["训练管理"])
 async def start_training(request: TrainingRequest, background_tasks: BackgroundTasks):
@@ -497,6 +506,7 @@ def _get_or_create_model(name: str):
     return _MODELS[name]
 
 def _run_inference(model, name: str):
+    """演示推理 — 使用合成数据 (生产环境需替换为真实数据加载)"""
     import time as _time
     t0 = _time.time()
     torch.manual_seed(42)
