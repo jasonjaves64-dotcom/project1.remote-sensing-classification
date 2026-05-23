@@ -61,7 +61,7 @@ def main():
             rs_weights_path=args.rs_weights,
         ).to(device)
     
-    model.load_state_dict(torch.load(args.model_path))
+    model.load_state_dict(torch.load(args.model_path, map_location=device, weights_only=True))
     model.eval()
     
     # 初始化预处理管道

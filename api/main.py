@@ -59,19 +59,21 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # 中间件配置
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=os.environ.get("CORS_ORIGINS", "http://localhost:8501,http://localhost:3000").split(","),
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["X-API-Key", "Content-Type"],
 )
 
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=["*"]
+    allowed_hosts=os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 )
 
 # API密钥认证
-API_KEY = os.environ.get("API_KEY", "crop_classification_secret_key")
+API_KEY = os.environ.get("API_KEY")
+if not API_KEY:
+    raise RuntimeError("API_KEY environment variable is required. Set it before starting the server.")
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 async def get_api_key(api_key: str = Depends(api_key_header)):
@@ -240,7 +242,7 @@ async def load_model(request: ModelLoadRequest):
         
         log_info(f"正在加载模型: {model_path}")
         
-        MODEL.load_state_dict(torch.load(model_path, map_location=DEVICE))
+        MODEL.load_state_dict(torch.load(model_path, map_location=DEVICE, weights_only=True))
         MODEL.eval()
         MODEL_LOADED = True
         
@@ -344,6 +346,9 @@ async def batch_inference(request: BatchInferenceRequest):
         total_inference_time=total_time
     )
 
+# 文件上传大小限制
+MAX_UPLOAD_SIZE = 500 * 1024 * 1024  # 500MB
+
 # 文件上传推理
 @app.post("/inference/file", tags=["推理服务"])
 @limiter.limit("10/minute")
@@ -355,6 +360,11 @@ async def inference_file(request,
 ):
     if not MODEL_LOADED:
         raise HTTPException(status_code=503, detail="模型未加载")
+
+    # 验证文件大小
+    for f in [opt_file, sar_file, dem_file, doy_file]:
+        if f and f.size and f.size > MAX_UPLOAD_SIZE:
+            raise HTTPException(status_code=413, detail=f"文件 {f.filename} 超过大小限制 ({MAX_UPLOAD_SIZE // 1024 // 1024}MB)")
     
     try:
         opt_data = np.load(opt_file.file)
@@ -641,11 +651,11 @@ async def predict_upload(model: str, files: list[UploadFile] = File(...)):
         distribution=dist,
         aux={}
     )
-    if model == 'v6' and 'aux' in dir():
-        result.aux = {
-            'lai': round(aux['lai'].mean().item(), 3),
-            'growth_stage': aux['growth'].argmax(dim=1).item(),
-            'boundary_coverage': round(aux['boundary'].mean().item() * 100, 1)
+    if model == 'v6':
+        result['aux'] = {
+            'lai': round(aux.get('lai', torch.tensor(0.0)).mean().item(), 3),
+            'growth_stage': aux.get('growth', torch.zeros(1)).argmax(dim=1).item(),
+            'boundary_coverage': round(aux.get('boundary', torch.tensor(0.0)).mean().item() * 100, 1)
         }
     return result
 
