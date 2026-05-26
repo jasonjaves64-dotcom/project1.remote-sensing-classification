@@ -71,9 +71,9 @@ app.add_middleware(
 )
 
 # API密钥认证
-API_KEY = os.environ.get("API_KEY")
-if not API_KEY:
-    raise RuntimeError("API_KEY environment variable is required. Set it before starting the server.")
+API_KEY = os.environ.get("API_KEY", "dev_key_change_in_production")
+if API_KEY == "dev_key_change_in_production":
+    log_info("WARNING: Using default API_KEY. Set API_KEY env var for production.")
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 async def get_api_key(api_key: str = Depends(api_key_header)):
@@ -222,13 +222,17 @@ async def get_model_status(request: Request):
 
 # 加载模型
 @app.post("/model/load", response_model=ModelStatusResponse, tags=["模型管理"])
-async def load_model(request: ModelLoadRequest):
+async def load_model(request: ModelLoadRequest, api_key: str = Depends(get_api_key)):
     global MODEL, MODEL_LOADED
     try:
-        model_path = Path(request.model_path)
+        model_path = Path(request.model_path).resolve()
+        allowed_dirs = [Path("/app/checkpoints").resolve(), Path("/app/models").resolve(),
+                        Path.cwd().resolve() / "checkpoints", Path.cwd().resolve() / "pretrained_weights"]
+        if not any(str(model_path).startswith(str(d)) for d in allowed_dirs):
+            raise HTTPException(status_code=403, detail="模型路径不在允许的目录内")
         if not model_path.exists():
             raise HTTPException(status_code=404, detail="模型文件不存在")
-        
+
         log_info(f"正在加载模型: {model_path}")
 
         # P0修复: MODEL未初始化时自动创建实例

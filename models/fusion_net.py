@@ -569,7 +569,7 @@ class PretrainedWeightManager:
         print(f"[OK] Checkpoint saved: {path} (Epoch {epoch})")
     
     def load_checkpoint(self, path: str, strict: bool = True):
-        checkpoint = torch.load(path, map_location="cpu")
+        checkpoint = torch.load(path, map_location="cpu", weights_only=True)
         missing, unexpected = self.model.load_state_dict(
             checkpoint["model_state"], strict=strict
         )

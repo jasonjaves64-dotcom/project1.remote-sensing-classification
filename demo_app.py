@@ -154,7 +154,7 @@ def load_model(version="V5EDL"):
             feat_dim=512, backbone="resnet18", pretrained=False,
             n_heads=4, n_layers=2, use_v6_enhancements=False
         )
-    ckpt = torch.load(MODEL_PATH, map_location="cpu", weights_only=False)
+    ckpt = torch.load(MODEL_PATH, map_location="cpu", weights_only=True)
     state = ckpt.get("model_state_dict", ckpt)
     model.load_state_dict(state, strict=False)
     model.eval()

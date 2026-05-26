@@ -144,7 +144,7 @@ def load_vit_foundation_weights(model_name: str, checkpoint_path: str):
         raise ValueError(f"Unknown ViT model '{model_name}'. "
                          f"Available: {list(_VIT_FOUNDATION_MODELS.keys())}")
 
-    state = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
+    state = torch.load(checkpoint_path, map_location='cpu', weights_only=True)
     if isinstance(state, dict) and 'state_dict' in state:
         state = state['state_dict']
     return state
