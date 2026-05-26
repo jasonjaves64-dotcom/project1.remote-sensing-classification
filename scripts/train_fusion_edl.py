@@ -163,9 +163,12 @@ def _run_training(model, train_loader, val_loader,
     use_amp = (device.type == "cuda")
     scaler = GradScaler() if use_amp else None
 
+    # Capture initial LRs before resume may mutate optimizer param_groups
+    initial_max_lr = [pg["lr"] for pg in optimizer.param_groups]
+
     scheduler = OneCycleLR(
         optimizer,
-        max_lr=[pg["lr"] for pg in optimizer.param_groups],
+        max_lr=initial_max_lr,
         total_steps=len(train_loader) * epochs,
         pct_start=0.1
     )
@@ -310,10 +313,12 @@ def _run_training(model, train_loader, val_loader,
 
                 if use_amp:
                     with autocast():
-                        alpha = model(opt, sar, dem, doy)
+                        out = model(opt, sar, dem, doy)
+                        alpha = out[0] if isinstance(out, tuple) else out
                         preds = dirichlet_to_predictions(alpha)
                 else:
-                    alpha = model(opt, sar, dem, doy)
+                    out = model(opt, sar, dem, doy)
+                    alpha = out[0] if isinstance(out, tuple) else out
                     preds = dirichlet_to_predictions(alpha)
 
                 all_preds.append(preds["pred_class"].cpu())

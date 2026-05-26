@@ -1416,7 +1416,7 @@ class TestV6Model:
         )
 
     def test_v6_eval_forward(self, v6_model):
-        """V6 eval returns alpha + aux dict."""
+        """V6 eval returns alpha only (compatible with V5EDL interface)."""
         v6_model.eval()
         B, T, H, W = 2, 6, 128, 128
         opt = torch.randn(B, T, 10, H, W)
@@ -1424,18 +1424,8 @@ class TestV6Model:
         dem = torch.randn(B, 5, H, W)
         doy = torch.rand(B, T)
         with torch.no_grad():
-            alpha, aux = v6_model(opt, sar, dem, doy)
+            alpha = v6_model(opt, sar, dem, doy)
         assert alpha.shape == (B, 7, H, W)
-        assert 'lai' in aux
-        assert 'growth' in aux
-        assert 'boundary' in aux
-        assert 'scene_logits' in aux
-        assert 'crop_mix' in aux
-        assert aux['lai'].shape == (B,)
-        assert aux['growth'].shape == (B, 5)
-        assert aux['boundary'].shape == (B, 1, H, W)
-        assert aux['scene_logits'].shape == (B, 4)
-        assert aux['crop_mix'].shape == (B, 7)
 
     def test_v6_train_forward(self, v6_model):
         """V6 train returns alpha, ndvi, consist, aux."""
@@ -1510,7 +1500,7 @@ class TestV6Model:
         doy = torch.rand(B, T)
         cm = torch.zeros(B, T, H, W, dtype=torch.bool)
         with torch.no_grad():
-            alpha, aux = v6_model(opt, sar, dem, doy, cloud_mask=cm)
+            alpha = v6_model(opt, sar, dem, doy, cloud_mask=cm)
         assert not torch.isnan(alpha).any()
 
     def test_v6_modality_dropout(self, v6_model):

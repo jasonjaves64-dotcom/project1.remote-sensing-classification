@@ -269,29 +269,25 @@ class CropClassificationDB:
         results = self.fetch_query(query, (exp_id,))
         return results[0] if results else None
 
-    def get_time_series_by_sensor(self, sensor_type: str, 
-                                  start_date: str = None, 
+    def get_time_series_by_sensor(self, sensor_type: str,
+                                  start_date: str = None,
                                   end_date: str = None) -> List[Dict]:
         query = """
-        SELECT * FROM time_series_data 
-        WHERE sensor_type = %s 
+        SELECT * FROM time_series_data
+        WHERE sensor_type = %s
+          AND (%s IS NULL OR acquisition_date >= %s)
+          AND (%s IS NULL OR acquisition_date <= %s)
+        ORDER BY acquisition_date
         """
-        params = [sensor_type]
-        if start_date:
-            query += " AND acquisition_date >= %s"
-            params.append(start_date)
-        if end_date:
-            query += " AND acquisition_date <= %s"
-            params.append(end_date)
-        query += " ORDER BY acquisition_date"
-        return self.fetch_query(query, tuple(params))
+        return self.fetch_query(query, (sensor_type, start_date, start_date, end_date, end_date))
 
     def get_pending_tasks(self, task_type: str = None) -> List[Dict]:
-        query = "SELECT * FROM preprocessing_tasks WHERE status = 'pending'"
-        if task_type:
-            query += " AND task_type = %s"
-            return self.fetch_query(query, (task_type,))
-        return self.fetch_query(query)
+        query = """
+        SELECT * FROM preprocessing_tasks
+        WHERE status = 'pending'
+          AND (%s IS NULL OR task_type = %s)
+        """
+        return self.fetch_query(query, (task_type, task_type))
 
     def get_confusion_matrix(self, exp_id: int) -> List[Dict]:
         query = """
@@ -304,15 +300,12 @@ class CropClassificationDB:
         return self.fetch_query(query, (exp_id,))
 
     def get_sample_count(self, season: str = None, crop_type: str = None) -> int:
-        query = "SELECT COUNT(*) as count FROM training_samples WHERE 1=1"
-        params = []
-        if season:
-            query += " AND season = %s"
-            params.append(season)
-        if crop_type:
-            query += " AND crop_type = %s"
-            params.append(crop_type)
-        results = self.fetch_query(query, tuple(params))
+        query = """
+        SELECT COUNT(*) as count FROM training_samples
+        WHERE (%s IS NULL OR season = %s)
+          AND (%s IS NULL OR crop_type = %s)
+        """
+        results = self.fetch_query(query, (season, season, crop_type, crop_type))
         return results[0]['count'] if results else 0
 
     def get_data_quality_metrics(self, exp_id: int) -> Optional[Dict]:

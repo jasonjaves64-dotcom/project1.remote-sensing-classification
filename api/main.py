@@ -230,7 +230,18 @@ async def load_model(request: ModelLoadRequest):
             raise HTTPException(status_code=404, detail="模型文件不存在")
         
         log_info(f"正在加载模型: {model_path}")
-        
+
+        # P0修复: MODEL未初始化时自动创建实例
+        global MODEL
+        if MODEL is None:
+            from models.fusion_net_v5_edl import FusionCropNetV5EDL
+            MODEL = FusionCropNetV5EDL(
+                opt_ch=10, sar_ch=5, dem_ch_in=5, num_classes=7,
+                feat_dim=512, backbone="resnet18", pretrained=False,
+                n_heads=16, win_size=4, n_layers=4,
+                use_v6_enhancements=False
+            ).to(DEVICE)
+
         MODEL.load_state_dict(torch.load(model_path, map_location=DEVICE, weights_only=True))
         MODEL.eval()
         MODEL_LOADED = True
@@ -518,39 +529,60 @@ def _run_inference(model, name: str):
 
     with torch.no_grad():
         if name == 'v6':
-            alpha, aux = model(opt, sar, dem, doy)
+            alpha = model(opt, sar, dem, doy)  # V6 eval returns alpha only (fixed 2026-05-24)
         elif name == 'tsvit':
-            alpha = model(opt, doy)
+            # TSViT kernel_size=1 patch_embed → O(n²) attention blowup at 64×64
+            # Use small spatial input for demo; full fix needs proper stride patch embed
+            opt_small = torch.nn.functional.interpolate(
+                opt.view(B*T,*opt.shape[2:]), (16,16), mode='bilinear').view(B,T,-1,16,16)
+            alpha = model(opt_small, doy)
         else:
             alpha = model(opt, sar, dem, doy)
 
-    probs = (alpha / alpha.sum(dim=1, keepdim=True)).squeeze(0)
-    pred = probs.argmax(dim=0)
-    elapsed = _time.time() - t0
+    if name == 'tsvit':
+        # TSViT outputs raw logits (B, K) — apply softmax for proper probabilities
+        alpha = torch.softmax(alpha, dim=1)
+        probs = alpha.squeeze(0)  # (K,)
+        elapsed = _time.time() - t0
+        pred_class = probs.argmax().item()
+        dist = {}
+        for k in range(7):
+            pct = round(probs[k].item() * 100, 1)
+            if pct > 0:
+                dist[CROP_NAMES[k]] = pct
+        dominant_class = CROP_NAMES[pred_class]
+        result = {
+            'dominant': dominant_class,
+            'confidence': round(probs.max().item() * 100, 1),
+            'time': round(elapsed, 2),
+            'distribution': dist,
+            'aux': {}
+        }
+    else:
+        probs = (alpha / alpha.sum(dim=1, keepdim=True)).squeeze(0)
+        pred = probs.argmax(dim=0)
+        elapsed = _time.time() - t0
 
-    dist = {}
-    for k in range(7):
-        pct = round((pred == k).sum().item() / (H*W) * 100, 1)
-        if pct > 0:
-            dist[CROP_NAMES[k]] = pct
+        ph, pw = pred.shape[-2:]
+        total_pixels = ph * pw
 
-    dominant_class = max(dist, key=dist.get) if dist else "—"
+        dist = {}
+        for k in range(7):
+            pct = round((pred == k).sum().item() / total_pixels * 100, 1)
+            if pct > 0:
+                dist[CROP_NAMES[k]] = pct
 
-    result = {
-        'dominant': dominant_class,
-        'confidence': round(probs.max(dim=0)[0].mean().item() * 100, 1),
-        'time': round(elapsed, 2),
-        'distribution': dist,
-        'aux': {}
-    }
+        dominant_class = max(dist, key=dist.get) if dist else "—"
 
-    if name == 'v6':
-        result['aux'] = {
-            'lai': round(aux['lai'].mean().item(), 3),
-            'growth_stage': aux['growth'].argmax(dim=1).item(),
-            'boundary_coverage': round(aux['boundary'].mean().item() * 100, 1)
+        result = {
+            'dominant': dominant_class,
+            'confidence': round(probs.max(dim=0)[0].mean().item() * 100, 1),
+            'time': round(elapsed, 2),
+            'distribution': dist,
+            'aux': {}
         }
 
+    # V6 aux outputs only available in training mode; skip in eval
     return result
 
 @app.post("/predict/{model}", response_model=PredictResponse, tags=["Inference"])

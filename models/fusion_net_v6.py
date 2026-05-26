@@ -14,7 +14,7 @@ V6 differs from V5EDL in:
 import torch
 import torch.nn.functional as F
 from .fusion_net_v5_edl import FusionCropNetV5EDL, EDLLoss, training_step as v5edl_training_step
-from ._base import PhenologyAuxHead
+from ._base import PhenologyAuxHead, compute_ndvi_loss
 
 
 class FusionCropNetV6(FusionCropNetV5EDL):
@@ -89,24 +89,19 @@ class FusionCropNetV6(FusionCropNetV5EDL):
             return_aux=True
         )
 
-        if self.training:
-            alpha, ndvi_pred, consistency_loss, aux_tuple = result
-        else:
-            alpha, ndvi_pred, consistency_loss, aux_tuple = result
-
+        alpha, ndvi_pred, consistency_loss, aux_tuple = result
         lai_pred, growth_pred, boundary_pred, scene_logits, crop_mix = aux_tuple
 
-        aux = {
-            'lai': lai_pred,
-            'growth': growth_pred,
-            'boundary': boundary_pred,
-            'scene_logits': scene_logits,
-            'crop_mix': crop_mix,
-        }
-
         if self.training:
+            aux = {
+                'lai': lai_pred,
+                'growth': growth_pred,
+                'boundary': boundary_pred,
+                'scene_logits': scene_logits,
+                'crop_mix': crop_mix,
+            }
             return alpha, ndvi_pred, consistency_loss, aux
-        return alpha, aux
+        return alpha  # eval: return alpha directly (compatible with V5EDL interface)
 
 
 def v6_training_step(model: FusionCropNetV6, batch: dict,
@@ -138,17 +133,12 @@ def v6_training_step(model: FusionCropNetV6, batch: dict,
         log_p = torch.log(probs + 1e-8)
         px_ce = F.nll_loss(log_p, y.clamp(0), reduction='none', ignore_index=255)
         weighted_ce = (px_ce * wm)[y != 255].mean()
-        lam = edl_loss_fn.lambda_max * min(1.0, epoch / max(edl_loss_fn.kl_anneal_epochs, 1))
-        edl_loss = weighted_ce + lam * (edl_loss - F.nll_loss(
-            log_p, y.clamp(0), reduction='mean', ignore_index=255))
+        current_lam = edl_loss_fn._current_lambda
+        orig_ce = F.nll_loss(log_p, y.clamp(0), reduction='mean', ignore_index=255)
+        kl_term = (edl_loss - orig_ce) / max(current_lam, 1e-8)
+        edl_loss = weighted_ce + current_lam * kl_term
 
-    B, T = opt.shape[:2]
-
-    # NDVI
-    ndvi_tgt = opt[:, :, ndvi_channel].mean(dim=(-2, -1)).reshape(B * T)
-    cm_bt = cm.view(B * T, -1).any(-1) if cm is not None else None
-    ndvi_loss = PhenologyAuxHead.compute_loss(ndvi_pred, ndvi_tgt, cm_bt)
-    aux_w = PhenologyAuxHead.schedule_weight(epoch)
+    ndvi_loss = compute_ndvi_loss(opt, ndvi_pred, cm, ndvi_channel)
 
     # LAI pseudo-labels
     ndvi_per_sample = opt[:, :, ndvi_channel].mean(dim=(-2, -1)).mean(dim=1)
@@ -213,14 +203,11 @@ if __name__ == "__main__":
     dem = torch.randn(B, 5, H, W, device=dev)
     doy = torch.rand(B, T, device=dev)
 
-    # Test eval mode
+    # Test eval mode (returns alpha only, compatible with V5EDL interface)
     m.eval()
     with torch.no_grad():
-        alpha, aux = m(opt, sar, dem, doy)
+        alpha = m(opt, sar, dem, doy)
     print(f"[eval] alpha={tuple(alpha.shape)}")
-    print(f"       lai={tuple(aux['lai'].shape)}, growth={tuple(aux['growth'].shape)}")
-    print(f"       boundary={tuple(aux['boundary'].shape)}")
-    print(f"       scene_logits={tuple(aux['scene_logits'].shape)}, crop_mix={tuple(aux['crop_mix'].shape)}")
 
     # Test train mode
     m.train()

@@ -55,6 +55,8 @@ class FusionCropNetV5Pro(nn.Module):
         self.dem_cond = DEMSpatialConditioner(feat_dim, dem_ch)
         self.dem_opt_cond = DEMOpticalConditioner(feat_dim, dem_ch)
         self.mid_xattn = CrossModalAttentionLight(feat_dim // 2, self.sar_enc.out_channels_list[1])
+        # Project mid_fused (feat_dim//2) → sar_ch_list[1] for Decoder merge1
+        self.mid_fused_proj = nn.Conv2d(feat_dim // 2, self.sar_enc.out_channels_list[1], 1)
         self.late_fuse = LateFusion(feat_dim)
         self.decoder = Decoder(feat_dim, self.sar_enc.out_channels_list[:2],
                                n_heads=8, win=win_size, use_carafe=use_carafe)
@@ -224,6 +226,7 @@ class FusionCropNetV5Pro(nn.Module):
         opt_p2a = time_average(opt_p2, B, T)
         sar_s2a = time_average(sar_s2, B, T)
         mid_fused = self.mid_xattn(opt_p2a, sar_s2a)
+        mid_fused = self.mid_fused_proj(mid_fused)  # project to Decoder's expected channel
 
         xm_f = xm_feat.permute(0, 2, 3, 1).reshape(B * H2 * W2, D)
         opt_f = opt_global.permute(0, 2, 3, 1).reshape(B * H2 * W2, D)

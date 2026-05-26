@@ -5,43 +5,39 @@ services:
     build: .
     ports:
       - "8000:8000"
-    environment:
-      - PYTHONPATH=/app
-      - MODEL_VERSION=v5
-      - EDL_ENABLED=true
+    env_file:
+      - .env
     volumes:
       - ./checkpoints:/app/checkpoints
       - ./data:/app/data
       - ./output:/app/output
-    restart: unless-stopped
-
-  streamlit:
-    build: .
-    command: streamlit run app.py --server.port=8501 --server.address=0.0.0.0
-    ports:
-      - "8501:8501"
-    environment:
-      - PYTHONPATH=/app
-      - MODEL_VERSION=v5
-      - EDL_ENABLED=true
-    volumes:
-      - ./checkpoints:/app/checkpoints
-      - ./data:/app/data
-      - ./output:/app/output
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     restart: unless-stopped
 
   mysql:
     image: mysql:8.0
     environment:
-      MYSQL_ROOT_PASSWORD: root
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-change-this-password}
       MYSQL_DATABASE: crop_classification
       MYSQL_USER: admin
-      MYSQL_PASSWORD: password
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-change-this-password}
     ports:
       - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./sql/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
 volumes:

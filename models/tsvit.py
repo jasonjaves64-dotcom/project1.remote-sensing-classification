@@ -67,8 +67,9 @@ class TSViT(nn.Module):
         B, T, C, H, W = x.shape
 
         x = x.reshape(B * T, C, H, W)
-        x = self.patch_embed(x)
-        x = x.reshape(B, T, -1)
+        x = self.patch_embed(x)  # (B*T, num_patches, embed_dim)
+        N = x.shape[1]  # num_patches per timestep
+        x = x.reshape(B, T * N, -1)  # (B, T*num_patches, embed_dim)
 
         cls_tokens = self.cls_token.expand(B, -1, -1)
         x = torch.cat([cls_tokens, x], dim=1)

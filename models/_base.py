@@ -223,7 +223,7 @@ class OpticalEncoder(nn.Module):
                     parent[int(parts[-1])] = nc
                 else:
                     setattr(parent, parts[-1], nc)
-                return
+                return  # only the first in_channels=3 Conv2d is adapted
 
     def _load_rs_weights(self, path: str):
         """Load remote sensing pre-trained weights with key mapping.
@@ -825,7 +825,7 @@ class ViTFeaturePyramid(nn.Module):
 
 class Decoder(nn.Module):
     """Decoder that outputs pre-head features (64ch). Caller applies final head."""
-    def __init__(self, feat_dim, sar_ch_list, n_heads=8, win=4, use_carafe=True):
+    def __init__(self, feat_dim, sar_ch_list, n_heads=8, win=4, use_carafe=True, dem_ch=128):
         super().__init__()
         od = feat_dim // 2
         sc0, sc1 = sar_ch_list
@@ -841,8 +841,7 @@ class Decoder(nn.Module):
         self.merge1 = ConvBNGELU(64 + od + sc1, 64)
         self.merge2 = ConvBNGELU(64 + od + sc0, 64)
         self.pre_head_ch = 64
-        # V6 Block 3: DEM → Decoder skip projection
-        self.dem_skip_proj = nn.Conv2d(128, self.pre_head_ch, 1, bias=False)  # 128 = dem_ch
+        self.dem_skip_proj = nn.Conv2d(dem_ch, self.pre_head_ch, 1, bias=False)
 
     def _a(self, f, hw):
         return (F.interpolate(f, hw, mode='bilinear', align_corners=False)
@@ -1051,6 +1050,26 @@ class LightSceneHead(nn.Module):
 # ═══════════════════════════════════════════════════════════════
 # Utility
 # ═══════════════════════════════════════════════════════════════
+
+def compute_ndvi_loss(opt, ndvi_pred, cloud_mask, ndvi_channel: int = 6):
+    """Compute NDVI auxiliary task loss from optical sequence.
+
+    Args:
+        opt: (B, T, C, H, W) optical sequence
+        ndvi_pred: (B*T,) predicted NDVI values
+        cloud_mask: (B, T, H, W) or None
+        ndvi_channel: index of NDVI band in optical channels
+
+    Returns:
+        ndvi_loss: scalar, weighted NDVI prediction loss
+        aux_weight: PhenologyAuxHead schedule weight for current epoch
+    """
+    import torch.nn.functional as F
+    B, T = opt.shape[:2]
+    ndvi_tgt = opt[:, :, ndvi_channel].mean(dim=(-2, -1)).reshape(B * T)
+    cm_bt = cloud_mask.view(B * T, -1).any(-1) if cloud_mask is not None else None
+    return PhenologyAuxHead.compute_loss(ndvi_pred, ndvi_tgt, cm_bt)
+
 
 def time_average(feat: torch.Tensor, B: int, T: int) -> torch.Tensor:
     _, C, h, w = feat.shape

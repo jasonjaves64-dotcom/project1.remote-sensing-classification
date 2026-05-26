@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, Tuple
+import contextlib
 import torch
 import numpy as np
 from .logger import TrainingLogger
@@ -121,7 +122,7 @@ class FusionTrainer(BaseTrainer):
                 self.scaler = None  # CPU AMP doesn't use GradScaler
         else:
             self.scaler = None
-            self.amp_autocast = torch.no_grad()
+            self.amp_autocast = contextlib.nullcontext()
         self.num_classes = 7
         self.total_epochs = total_epochs
         self._current_epoch = 0
@@ -132,7 +133,7 @@ class FusionTrainer(BaseTrainer):
         if 'V5Pro' in model_name:
             return self.model(opt, sar, dem, doy, cloud_mask, valid_count,
                              epoch=self._current_epoch, total_epochs=self.total_epochs)
-        elif 'V5EDL' in model_name or 'V5' in model_name:
+        elif 'V5EDL' in model_name or 'V5' in model_name or 'V6' in model_name:
             return self.model(opt, sar, dem, doy, cloud_mask, valid_count)
         else:
             return self.model(opt, sar, dem, doy)
@@ -316,7 +317,11 @@ class TwoPhaseTrainer:
         return trainer.fit(train_loader, val_loader, epochs, phase=2)
     
     def _get_criterion(self):
-        """获取损失函数"""
+        """获取损失函数 — EDL 模型用 EDLLoss，其他用 DiceFocalLoss"""
+        model_name = self.model.__class__.__name__
+        if 'EDL' in model_name or 'V6' in model_name:
+            from models.fusion_net_v5_edl import EDLLoss
+            return EDLLoss(num_classes=self.model.num_classes)
         return DiceFocalLoss(num_classes=7)
     
     def _check_ckpt_exists(self, path: str) -> bool:

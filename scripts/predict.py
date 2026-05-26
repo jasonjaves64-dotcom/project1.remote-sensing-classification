@@ -61,7 +61,11 @@ def main():
             rs_weights_path=args.rs_weights,
         ).to(device)
     
-    model.load_state_dict(torch.load(args.model_path, map_location=device, weights_only=True))
+    ckpt = torch.load(args.model_path, map_location=device, weights_only=True)
+    if isinstance(ckpt, dict) and 'model_state' in ckpt:
+        model.load_state_dict(ckpt['model_state'])
+    else:
+        model.load_state_dict(ckpt)
     model.eval()
     
     # 初始化预处理管道
@@ -119,7 +123,10 @@ def main():
             probs = result['probs'].squeeze().cpu().numpy()
             vacuity = result['vacuity'].squeeze().cpu().numpy()
             dissonance = result['dissonance'].squeeze().cpu().numpy()
-            alpha = result.get('alpha_fused', probs)  # for calibration report
+            alpha = result.get('alpha_fused')
+            if alpha is None:
+                print("Warning: alpha_fused not found in result, calibration skipped")
+                alpha = None
             
             # 保存结果
             os.makedirs(args.output_path, exist_ok=True)
@@ -137,7 +144,7 @@ def main():
             print(f"结果已保存到: {args.output_path}")
 
         # Calibration report
-        if args.calibration and args.edl and args.label_path and os.path.exists(args.label_path):
+        if args.calibration and args.edl and alpha is not None and args.label_path and os.path.exists(args.label_path):
             from utils.calibration import calibration_report, print_calibration_report
             label = np.load(args.label_path)
             print("\n" + "=" * 60)

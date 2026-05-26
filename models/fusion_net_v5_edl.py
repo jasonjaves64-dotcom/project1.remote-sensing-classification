@@ -15,6 +15,7 @@ from ._base import (
     CrossModalAttention, CrossModalLite, DEMSpatialConditioner, LateFusion,
     SpatialRefinement, Decoder, PhenologyAuxHead,
     LightSceneHead, time_average, ModalNormalize, DEMOpticalConditioner,
+    compute_ndvi_loss,
 )
 
 # V6 Block 1: Lightweight temporal encoder
@@ -38,6 +39,7 @@ class EDLHead(nn.Module):
             nn.Conv2d(in_ch, num_classes, 1))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Output alpha = softplus(logits) + 1, not raw logits."""
         x = self.dropout(x)
         logits = self.net(x)
         return F.softplus(logits) + 1.0
@@ -281,18 +283,18 @@ class FusionCropNetV5EDL(nn.Module):
         Co = opt_seq.shape[2]
         H, W = opt_seq.shape[3], opt_seq.shape[4]
 
+        if self.training:
+            sx = torch.randint(-1, 2, (1,)).item()
+            sy = torch.randint(-1, 2, (1,)).item()
+            opt_seq, sar_seq, dem, cloud_mask, valid_count = self._shift_inputs(
+                opt_seq, sar_seq, dem, cloud_mask, valid_count, sx, sy)
+
         if use_dem:
             dem_feat = self.dem_enc(dem)
             if self.training:
                 dem_feat = dem_feat + 0.01 * torch.randn_like(dem_feat)
         else:
             dem_feat = self.placeholder_dem_feat.expand(B, -1, H, W)
-
-        if self.training:
-            sx = torch.randint(-1, 2, (1,)).item()
-            sy = torch.randint(-1, 2, (1,)).item()
-            opt_seq, sar_seq, dem, cloud_mask, valid_count = self._shift_inputs(
-                opt_seq, sar_seq, dem, cloud_mask, valid_count, sx, sy)
 
         dem_feat = F.interpolate(dem_feat, (H, W), mode='bilinear', align_corners=False)
 
@@ -545,7 +547,7 @@ def training_step(model: FusionCropNetV5EDL,
     vc = batch.get('valid_count', None)
     wm = batch.get('weight_map', None)
 
-    is_v6 = getattr(model, 'use_v6', False)
+    is_v6 = 'V6' in model.__class__.__name__
     if is_v6:
         alpha, ndvi_pred, consist_loss, (lai_pred, growth_pred, boundary_pred, scene_logits, crop_mix) = model(
             opt, sar, dem, doy, cm, vc, epoch=epoch, return_aux=True)
@@ -560,14 +562,12 @@ def training_step(model: FusionCropNetV5EDL,
         log_p = torch.log(probs + 1e-8)
         px_ce = F.nll_loss(log_p, y.clamp(0), reduction='none', ignore_index=255)
         weighted_ce = (px_ce * wm)[y != 255].mean()
-        lam = edl_loss_fn.lambda_max * min(1.0, epoch / max(edl_loss_fn.kl_anneal_epochs, 1))
-        edl_loss = weighted_ce + lam * (edl_loss - F.nll_loss(
-            log_p, y.clamp(0), reduction='mean', ignore_index=255))
+        current_lam = edl_loss_fn._current_lambda
+        orig_ce = F.nll_loss(log_p, y.clamp(0), reduction='mean', ignore_index=255)
+        kl_term = (edl_loss - orig_ce) / max(current_lam, 1e-8)
+        edl_loss = weighted_ce + current_lam * kl_term
 
-    B, T = opt.shape[:2]
-    ndvi_tgt = opt[:, :, ndvi_channel].mean(dim=(-2, -1)).reshape(B * T)
-    cm_bt = cm.view(B * T, -1).any(-1) if cm is not None else None
-    ndvi_loss = PhenologyAuxHead.compute_loss(ndvi_pred, ndvi_tgt, cm_bt)
+    ndvi_loss = compute_ndvi_loss(opt, ndvi_pred, cm, ndvi_channel)
     aux_w = PhenologyAuxHead.schedule_weight(epoch)
 
     if is_v6:
