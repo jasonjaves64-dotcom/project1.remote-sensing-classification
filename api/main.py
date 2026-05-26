@@ -259,7 +259,7 @@ async def load_model(request: ModelLoadRequest, api_key: str = Depends(get_api_k
         )
     except Exception as e:
         log_error("模型加载失败", exception=e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 # 单样本推理
 @app.post("/inference", response_model=InferenceResponse, tags=["推理服务"])
@@ -318,7 +318,7 @@ async def inference(request: InferenceRequest):
     
     except Exception as e:
         log_error("推理失败", exception=e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 # 批量推理
 @app.post("/inference/batch", response_model=BatchInferenceResponse, tags=["推理服务"])
@@ -387,7 +387,7 @@ async def inference_file(request,
     
     except Exception as e:
         log_error("文件推理失败", exception=e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 # 计算指标
 @app.post("/metrics", response_model=MetricsResponse, tags=["指标计算"])
@@ -399,7 +399,7 @@ async def calculate_model_metrics(request: Request, predictions: List[List[int]]
         return MetricsResponse(success=True, metrics=metrics)
     except Exception as e:
         log_error("指标计算失败", exception=e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 # 异步训练任务
 async def run_training(data_path: str, epochs: int, batch_size: int, lr: float):
@@ -431,9 +431,17 @@ async def run_training(data_path: str, epochs: int, batch_size: int, lr: float):
         log_error("训练任务异常", exception=e)
 
 @app.post("/train", response_model=TaskResponse, tags=["训练管理"])
-async def start_training(request: TrainingRequest, background_tasks: BackgroundTasks):
+@limiter.limit("5/minute")
+async def start_training(request: TrainingRequest, background_tasks: BackgroundTasks, api_key: str = Depends(get_api_key)):
+    # Validate data_path is within allowed directories
+    import pathlib
+    data_p = pathlib.Path(request.data_path).resolve()
+    allowed = [pathlib.Path("/app/data").resolve(), pathlib.Path.cwd().resolve() / "data"]
+    if not any(str(data_p).startswith(str(d)) for d in allowed):
+        raise HTTPException(status_code=403, detail="data_path outside allowed directories")
+
     task_id = f"train_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    background_tasks.add_task(run_training, request.data_path, request.epochs, request.batch_size, request.lr)
+    background_tasks.add_task(run_training, str(data_p), request.epochs, request.batch_size, request.lr)
     
     return TaskResponse(
         success=True,
@@ -590,6 +598,7 @@ def _run_inference(model, name: str):
     return result
 
 @app.post("/predict/{model}", response_model=PredictResponse, tags=["Inference"])
+@limiter.limit("30/minute")
 async def predict_model(model: str, request: PredictRequest):
     valid = {'v5', 'v5edl', 'v5pro', 'v6', 'tsvit'}
     if model not in valid:
@@ -610,6 +619,7 @@ class UploadResponse(BaseModel):
     geojson: Optional[dict] = None
 
 @app.post("/predict/{model}/upload", response_model=UploadResponse, tags=["Inference"])
+@limiter.limit("20/minute")
 async def predict_upload(model: str, files: list[UploadFile] = File(...)):
     valid = {'v5', 'v5edl', 'v5pro', 'v6', 'tsvit'}
     if model not in valid:
@@ -625,6 +635,8 @@ async def predict_upload(model: str, files: list[UploadFile] = File(...)):
     for f in files:
         name = f.filename or ''
         content = await f.read()
+        if len(content) > MAX_UPLOAD_SIZE:
+            raise HTTPException(status_code=413, detail=f"File {name} exceeds {MAX_UPLOAD_SIZE // 1024 // 1024}MB limit")
         ext = name.rsplit('.', 1)[-1].lower() if '.' in name else ''
 
         if ext == 'npy':

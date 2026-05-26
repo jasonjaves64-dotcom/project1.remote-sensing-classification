@@ -5,8 +5,14 @@ from typing import Dict, List, Optional, Any
 import datetime
 
 class CropClassificationDB:
-    def __init__(self, host='localhost', database='crop_classification', 
-                 user='root', password='', port=3306):
+    def __init__(self, host='localhost', database='crop_classification',
+                 user='root', password=None, port=3306):
+        if password is None:
+            import os
+            password = os.environ.get('MYSQL_ROOT_PASSWORD', '')
+            if not password:
+                import warnings
+                warnings.warn('MYSQL_ROOT_PASSWORD not set — using empty password')
         self.host = host
         self.database = database
         self.user = user
