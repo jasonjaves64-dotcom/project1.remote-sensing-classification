@@ -16,5 +16,5 @@ uvicorn>=0.27.0
 onnx>=1.15.0
 onnxruntime>=1.16.0
 mysql-connector-python>=8.3.0
-slowapi>=0.1.9
+# rate limiting: now uses built-in middleware (utils/rate_limiter.py)
 gradio>=4.0

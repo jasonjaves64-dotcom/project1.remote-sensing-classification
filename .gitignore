@@ -61,9 +61,10 @@ pretrained_weights/
 # ArcGIS exports
 arcgis_exports_final/
 
+# Experiment outputs
+ablation_output/
+validation/
+
 # Environment
 .env
 .env.local
-
-# PyInstaller
-*.spec

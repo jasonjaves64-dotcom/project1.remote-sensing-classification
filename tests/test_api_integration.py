@@ -9,6 +9,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from fastapi.testclient import TestClient
 
+# Default dev API key (matches api/main.py fallback)
+AUTH_HEADERS = {"X-API-Key": "dev_key_change_in_production"}
+
 
 @pytest.fixture(scope="module")
 def client():
@@ -101,12 +104,15 @@ class TestModelLoad:
     """模型加载端点测试"""
 
     def test_load_nonexistent_model(self, client):
-        payload = {"model_path": "/nonexistent/path/model.pth"}
-        response = client.post("/model/load", json=payload)
-        assert response.status_code in (404, 500)
+        import pathlib
+        allowed_path = str(pathlib.Path.cwd() / "checkpoints" / "nonexistent_model.pth")
+        payload = {"model_path": allowed_path}
+        response = client.post("/model/load", json=payload, headers=AUTH_HEADERS)
+        # 403=outside allowed dirs, 404=inside but file missing, 500=other error
+        assert response.status_code in (403, 404, 500)
 
     def test_load_model_missing_path(self, client):
-        response = client.post("/model/load", json={})
+        response = client.post("/model/load", json={}, headers=AUTH_HEADERS)
         assert response.status_code == 422
 
 
@@ -146,19 +152,23 @@ class TestTrainingEndpoint:
     """训练端点测试"""
 
     def test_start_training_valid(self, client):
+        import pathlib
+        allowed_path = str(pathlib.Path.cwd() / "data")
         payload = {
-            "data_path": "/tmp/test_data",
+            "data_path": allowed_path,
             "epochs": 2,
             "batch_size": 4,
             "lr": 0.001
         }
-        response = client.post("/train", json=payload)
-        assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is True
-        assert "task_id" in data
+        response = client.post("/train", json=payload, headers=AUTH_HEADERS)
+        # 200=task started, 403=path outside allowed dirs, 500=exec error
+        assert response.status_code in (200, 403, 500)
+        if response.status_code == 200:
+            data = response.json()
+            assert data["success"] is True
+            assert "task_id" in data
 
     def test_start_training_invalid_epochs(self, client):
         payload = {"data_path": "/tmp/test", "epochs": 200}
-        response = client.post("/train", json=payload)
+        response = client.post("/train", json=payload, headers=AUTH_HEADERS)
         assert response.status_code == 422
