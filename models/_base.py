@@ -842,12 +842,13 @@ class Decoder(nn.Module):
         self.merge2 = ConvBNGELU(64 + od + sc0, 64)
         self.pre_head_ch = 64
         self.dem_skip_proj = nn.Conv2d(dem_ch, self.pre_head_ch, 1, bias=False)
+        self.early_skip_proj = nn.Conv2d(128, self.pre_head_ch, 1, bias=False)
 
     def _a(self, f, hw):
         return (F.interpolate(f, hw, mode='bilinear', align_corners=False)
                 if f.shape[-2:] != hw else f)
 
-    def forward(self, x, opt_skips, sar_skips, target_size, dem_skip=None):
+    def forward(self, x, opt_skips, sar_skips, target_size, dem_skip=None, early_skip=None):
         opt_p2, = opt_skips
         sar_s1, sar_s2 = sar_skips
         x = self.up1(x)
@@ -864,6 +865,11 @@ class Decoder(nn.Module):
         x = self.merge2(torch.cat([x,
                                    self._a(opt_p2, x.shape[-2:]),
                                    self._a(sar_s1, x.shape[-2:])], dim=1))
+        # V6: Early fusion skip — tri-modal joint representation at full resolution
+        if early_skip is not None:
+            if early_skip.shape[-2:] != x.shape[-2:]:
+                early_skip = F.interpolate(early_skip, x.shape[-2:], mode='bilinear', align_corners=False)
+            x = x + self.early_skip_proj(early_skip)
         return self._a(x, target_size)
 
 

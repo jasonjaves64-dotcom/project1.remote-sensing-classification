@@ -266,7 +266,20 @@ class FusionCropNetV5EDL(nn.Module):
         return opt_seq, sar_seq, dem, cloud_mask, valid_count
 
     def _encode(self, opt_seq, sar_seq, dem, doy, cloud_mask, valid_count,
-                modality_mask=None):
+                modality_mask=None, dem_ablation=None):
+        """Forward pass with optional DEM ablation control.
+
+        Args:
+            dem_ablation: optional dict to disable specific DEM injection points.
+                Keys: 'sar_film', 'spatial_cond', 'decoder_skip',
+                      'early_fusion', 'opt_cond', 'temporal_bias'.
+                True = enabled (default), False = disabled.
+                None = all enabled.
+        """
+        if dem_ablation is None:
+            dem_ablation = {}
+        _dem = lambda k: dem_ablation.get(k, True)  # default: enabled
+
         if modality_mask is None:
             use_opt, use_sar, use_dem = True, True, True
         else:
@@ -299,7 +312,7 @@ class FusionCropNetV5EDL(nn.Module):
         dem_feat = F.interpolate(dem_feat, (H, W), mode='bilinear', align_corners=False)
 
         # V6 Block 2: Early Fusion (only when use_v6=True)
-        if self.use_v6 and use_opt and use_sar and use_dem:
+        if self.use_v6 and use_opt and use_sar and use_dem and _dem('early_fusion'):
             opt_for_early = opt_seq[:, 0] if opt_seq.dim() == 5 else opt_seq
             sar_for_early = sar_seq[:, 0] if sar_seq.dim() == 5 else sar_seq
             unified_early = self.modal_norm(opt_for_early, sar_for_early, dem)
@@ -322,14 +335,14 @@ class FusionCropNetV5EDL(nn.Module):
         _, D, H2, W2 = opt_feat.shape
 
         # V6 Block 3: DEM → Optical FiLM (only when use_v6=True)
-        if self.use_v6 and use_dem and use_opt:
+        if self.use_v6 and use_dem and use_opt and _dem('opt_cond'):
             dem_feat_tiled = dem_feat.unsqueeze(1).expand(-1, T, -1, -1, -1).reshape(B * T, -1, H, W)
             opt_feat, opt_p2 = self.dem_opt_cond(opt_feat, opt_p2, dem_feat_tiled)
 
         if use_sar:
             sar_flat = sar_seq.view(B * T, sar_seq.shape[2], H, W)
             dem_tiled = dem_feat.unsqueeze(1).expand(-1, T, -1, -1, -1).reshape(B * T, -1, H, W)
-            sar_s1, sar_s2, sar_s3 = self.sar_enc(sar_flat, dem_feat=dem_tiled)
+            sar_s1, sar_s2, sar_s3 = self.sar_enc(sar_flat, dem_feat=dem_tiled if _dem('sar_film') else None)
         else:
             sar_s1 = torch.zeros(B * T, 64, H, W, device=opt_feat.device)
             sar_s2 = torch.zeros(B * T, 128, H // 2, W // 2, device=opt_feat.device)
@@ -354,7 +367,7 @@ class FusionCropNetV5EDL(nn.Module):
         opt_ts = self._to_pixel_seq(opt_feat, B, T, H2, W2, D)
         sar_ts = self._to_pixel_seq(sar_s3, B, T, H2, W2, D)
         # V6 Block 3: DEM → Temporal FiLM (only when use_v6=True)
-        if self.use_v6 and use_dem:
+        if self.use_v6 and use_dem and _dem('temporal_bias'):
             dem_temporal = F.adaptive_avg_pool2d(dem_feat, (H2, W2))
             dem_temporal_flat = dem_temporal.permute(0, 2, 3, 1).reshape(B * H2 * W2, -1)
             dem_temporal_bias = self.dem_temporal_proj(dem_temporal_flat).unsqueeze(1)
@@ -385,7 +398,7 @@ class FusionCropNetV5EDL(nn.Module):
         else:
             xm_feat = sar_global
 
-        if use_dem:
+        if use_dem and _dem('spatial_cond'):
             xm_feat = self.dem_cond(xm_feat, dem_feat)
 
         xm_f = xm_feat.permute(0, 2, 3, 1).reshape(B * H2 * W2, D)
@@ -431,7 +444,8 @@ class FusionCropNetV5EDL(nn.Module):
             pre_head = self.decoder(final,
                                     opt_skips=(opt_p2a,),
                                     sar_skips=(cross_h, cross_h2),
-                                    dem_skip=dem_feat if use_dem else None,
+                                    dem_skip=dem_feat if (use_dem and _dem('decoder_skip')) else None,
+                                    early_skip=unified_early,
                                     target_size=(H, W))
         else:
             # V5EDL original path: time_average for skip connections
@@ -444,17 +458,19 @@ class FusionCropNetV5EDL(nn.Module):
             pre_head = self.decoder(final,
                                     opt_skips=(opt_p2_avg,),
                                     sar_skips=(sar_s1_avg, sar_s2_avg),
-                                    dem_skip=dem_feat if use_dem else None,
+                                    dem_skip=dem_feat if (use_dem and _dem('decoder_skip')) else None,
+                                    early_skip=unified_early,
                                     target_size=(H, W))
         return pre_head, ndvi_pred, opt_seq_out, cm_px, B, T, H2, W2, D, H, W, opt_f
 
     def forward(self, opt_seq, sar_seq, dem, doy,
                 cloud_mask=None, valid_count=None, epoch: int = 0,
-                modality_mask=None, return_aux: bool = False):
+                modality_mask=None, return_aux: bool = False,
+                dem_ablation=None):
         (pre_head, ndvi_pred, opt_seq_out,
          cm_px, B, T, H2, W2, D, H, W, opt_f) = self._encode(
              opt_seq, sar_seq, dem, doy, cloud_mask, valid_count,
-             modality_mask=modality_mask)
+             modality_mask=modality_mask, dem_ablation=dem_ablation)
         alpha = self.edl_head(pre_head)
 
         # V6 Block 5+7: Multi-task auxiliary predictions (only when use_v6=True)
@@ -489,7 +505,8 @@ class FusionCropNetV5EDL(nn.Module):
                             cloud_mask=None, valid_count=None,
                             n_passes: int = 10,
                             use_tta: bool = True,
-                            modality_mask=None) -> dict[str, torch.Tensor]:
+                            modality_mask=None,
+                            dem_ablation=None) -> dict[str, torch.Tensor]:
         self.eval()
         for m in self.edl_head.modules():
             if isinstance(m, nn.Dropout2d):
@@ -499,7 +516,8 @@ class FusionCropNetV5EDL(nn.Module):
         inputs_orig = (opt_seq, sar_seq, dem, doy, cloud_mask, valid_count)
 
         def _single_pass(args):
-            pre_head, *_ = self._encode(*args, modality_mask=modality_mask)
+            pre_head, *_ = self._encode(*args, modality_mask=modality_mask,
+                                        dem_ablation=dem_ablation)
             return self.edl_head(pre_head)
 
         with torch.no_grad():

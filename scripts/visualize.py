@@ -533,6 +533,190 @@ def plot_per_class_calibration(report, save_path="per_class_calibration.png"):
 
 
 # =============================================================================
+# Cross-Year Degradation Visualization
+# =============================================================================
+def plot_cross_year_degradation(degradation_summary,
+                                 save_path="cross_year_degradation.png"):
+    """Plot per-class IoU degradation across test years.
+
+    Creates a 2-panel figure:
+      Left: Per-class IoU comparison across years (grouped bar chart)
+      Right: Stability ranking (horizontal bar chart)
+
+    Args:
+        degradation_summary: dict from ValidationStrategy.cross_year_degradation_analysis()
+    """
+    import matplotlib.pyplot as plt
+
+    year_results = degradation_summary.get("year_results", {})
+    stability = degradation_summary.get("stability_ranking", [])
+    ref_year = degradation_summary.get("reference_year", "")
+
+    if not year_results or not stability:
+        print("No degradation data, skipping cross-year plot.")
+        return
+
+    years = list(year_results.keys())
+    class_names = [s["class_name"] for s in stability]
+    num_classes = len(class_names)
+
+    # Build IoU matrix: rows=classes, cols=years
+    iou_matrix = []
+    for s in stability:
+        cid = s["class_id"]
+        row = []
+        for y in years:
+            yr_iou = year_results[y].get("IoU_per_class", [])
+            row.append(yr_iou[cid - 1] if cid - 1 < len(yr_iou) else 0)
+        iou_matrix.append(row)
+
+    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+
+    # ── Left: grouped bar chart: per-class IoU per year ──
+    ax = axes[0]
+    x = np.arange(num_classes)
+    n_years = len(years)
+    width = 0.8 / max(n_years, 1)
+    colors = plt.cm.viridis(np.linspace(0.1, 0.9, n_years))
+
+    for yi, year in enumerate(years):
+        offset = (yi - n_years / 2 + 0.5) * width
+        values = [iou_matrix[ci][yi] for ci in range(num_classes)]
+        label = f"{year}" + (" (ref)" if year == ref_year else "")
+        ax.bar(x + offset, values, width, color=colors[yi],
+               alpha=0.85, label=label, edgecolor='white', linewidth=0.5)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(class_names, rotation=30, ha='right', fontsize=9)
+    ax.set_ylabel('IoU', fontsize=11)
+    ax.set_title(f'Per-Class IoU Across Years (ref={ref_year})', fontsize=12)
+    ax.legend(fontsize=8, loc='lower right')
+    ax.grid(True, alpha=0.3, axis='y')
+    ax.set_ylim(0, 1)
+
+    # ── Right: stability ranking ──
+    ax2 = axes[1]
+    scores = [s["stability_score"] for s in stability]
+    degrads = [s["mean_degradation"] for s in stability]
+    names_rev = list(reversed(class_names))
+    scores_rev = list(reversed(scores))
+    degrads_rev = list(reversed(degrads))
+
+    bar_colors = []
+    for d in degrads_rev:
+        if d > 0.05:
+            bar_colors.append('#F44336')
+        elif d > 0.01:
+            bar_colors.append('#FF9800')
+        elif d < -0.01:
+            bar_colors.append('#4CAF50')
+        else:
+            bar_colors.append('#2196F3')
+
+    ax2.barh(range(num_classes), scores_rev, color=bar_colors, alpha=0.85,
+             edgecolor='white')
+    ax2.set_yticks(range(num_classes))
+    ax2.set_yticklabels(names_rev, fontsize=9)
+    ax2.set_xlabel('Stability Score (higher = more stable)', fontsize=11)
+    ax2.set_title('Cross-Year Stability Ranking', fontsize=12)
+    ax2.grid(True, alpha=0.3, axis='x')
+
+    # Legend for colors
+    from matplotlib.patches import Patch
+    legend_elements = [
+        Patch(facecolor='#4CAF50', label='Improved (>1% IoU)'),
+        Patch(facecolor='#2196F3', label='Stable (±1%)'),
+        Patch(facecolor='#FF9800', label='Mild degradation (1-5%)'),
+        Patch(facecolor='#F44336', label='Severe degradation (>5%)'),
+    ]
+    ax2.legend(handles=legend_elements, fontsize=7, loc='lower right')
+
+    # Annotate mean degradation on each bar
+    for i, (s, d) in enumerate(zip(scores_rev, degrads_rev)):
+        ax2.text(s + 0.01, i, f'Δ={d:+.3f}', va='center', fontsize=7)
+
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"Cross-year degradation plot saved to: {save_path}")
+
+
+def plot_cross_year_degradation_heatmap(degradation_summary,
+                                          save_path="cross_year_degradation_heatmap.png"):
+    """Plot per-class IoU degradation as a heatmap (classes × test years)."""
+    import matplotlib.pyplot as plt
+
+    per_class = degradation_summary.get("per_class_degradation", {})
+    year_results = degradation_summary.get("year_results", {})
+    ref_year = degradation_summary.get("reference_year", "")
+
+    if not per_class:
+        print("No per-class degradation data, skipping heatmap.")
+        return
+
+    test_years = [y for y in per_class.keys()]
+    if not test_years:
+        return
+
+    first_deltas = per_class[test_years[0]]
+    class_names = [d["class_name"] for d in first_deltas]
+    n_classes = len(class_names)
+    n_years = len(test_years)
+
+    delta_matrix = np.zeros((n_classes, n_years))
+    for yi, year in enumerate(test_years):
+        for ci, d in enumerate(per_class[year]):
+            delta_matrix[ci, yi] = d["delta_IoU"]
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, max(5, n_classes * 0.4)),
+                              gridspec_kw={'width_ratios': [3, 1]})
+
+    # ── Left: heatmap ──
+    vmax = max(abs(delta_matrix).max(), 0.01)
+    im = axes[0].imshow(delta_matrix, cmap='RdYlGn', aspect='auto',
+                         vmin=-vmax, vmax=vmax, interpolation='nearest')
+    axes[0].set_xticks(range(n_years))
+    axes[0].set_xticklabels([f"{y}\nΔmIoU={degradation_summary.get('mIoU_degradation',{}).get(y,0):+.3f}"
+                              for y in test_years], fontsize=8)
+    axes[0].set_yticks(range(n_classes))
+    axes[0].set_yticklabels(class_names, fontsize=9)
+    axes[0].set_title(f'Per-Class IoU Degradation Heatmap (ref={ref_year})', fontsize=12)
+
+    # Annotate cells
+    for yi in range(n_years):
+        for ci in range(n_classes):
+            val = delta_matrix[ci, yi]
+            color = 'white' if abs(val) > vmax * 0.5 else 'black'
+            axes[0].text(yi, ci, f'{val:+.3f}', ha='center', va='center',
+                        fontsize=8, color=color, weight='bold')
+
+    plt.colorbar(im, ax=axes[0], fraction=0.046, label='ΔIoU')
+
+    # ── Right: mean degradation per class summary ──
+    mean_deltas = delta_matrix.mean(axis=1)
+    bar_colors = ['#F44336' if d > 0.03 else '#FF9800' if d > 0.01
+                  else '#4CAF50' if d < -0.01 else '#2196F3'
+                  for d in mean_deltas]
+    axes[1].barh(range(n_classes), mean_deltas, color=bar_colors, alpha=0.85,
+                 edgecolor='white')
+    axes[1].set_yticks(range(n_classes))
+    axes[1].set_yticklabels(class_names, fontsize=9)
+    axes[1].set_xlabel('Mean ΔIoU across years', fontsize=10)
+    axes[1].set_title('Mean Degradation', fontsize=11)
+    axes[1].axvline(x=0, color='black', linewidth=0.5, linestyle='--')
+    axes[1].grid(True, alpha=0.3, axis='x')
+
+    for ci, (val, name) in enumerate(zip(mean_deltas, class_names)):
+        axes[1].text(val + 0.002 * np.sign(val) if abs(val) > 0.001 else val + 0.002,
+                     ci, f'{val:+.3f}', va='center', fontsize=8)
+
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"Cross-year degradation heatmap saved to: {save_path}")
+
+
+# =============================================================================
 # Interpretability plots
 # =============================================================================
 def plot_gradcam_heatmaps(gradcam_maps, class_names=None, opt_img=None,
