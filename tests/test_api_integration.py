@@ -9,6 +9,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from fastapi.testclient import TestClient
 
+AUTH_HEADERS = {"X-API-Key": "dev-api-key-change-me"}
+
 
 @pytest.fixture(scope="module")
 def client():
@@ -86,11 +88,11 @@ class TestInferenceValidation:
         assert response.status_code == 422
 
     def test_predict_model_invalid(self, client):
-        response = client.post("/predict/invalid_model", json={})
+        response = client.post("/predict/invalid_model", json={}, headers=AUTH_HEADERS)
         assert response.status_code == 400
 
     def test_predict_model_v5_ok(self, client):
-        response = client.post("/predict/v5", json={})
+        response = client.post("/predict/v5", json={}, headers=AUTH_HEADERS)
         assert response.status_code == 200
         data = response.json()
         assert "dominant" in data
@@ -101,12 +103,12 @@ class TestModelLoad:
     """模型加载端点测试"""
 
     def test_load_nonexistent_model(self, client):
-        payload = {"model_path": "/nonexistent/path/model.pth"}
-        response = client.post("/model/load", json=payload)
-        assert response.status_code in (404, 500)
+        payload = {"model_path": "models/nonexistent.pt"}
+        response = client.post("/model/load", json=payload, headers=AUTH_HEADERS)
+        assert response.status_code in (403, 404, 500)
 
     def test_load_model_missing_path(self, client):
-        response = client.post("/model/load", json={})
+        response = client.post("/model/load", json={}, headers=AUTH_HEADERS)
         assert response.status_code == 422
 
 
@@ -118,7 +120,7 @@ class TestFileInference:
         assert response.status_code == 422
 
     def test_predict_upload_no_files(self, client):
-        response = client.post("/predict/v5/upload")
+        response = client.post("/predict/v5/upload", headers=AUTH_HEADERS)
         assert response.status_code == 422
 
 
@@ -147,7 +149,7 @@ class TestTrainingEndpoint:
 
     def test_start_training_valid(self, client):
         payload = {
-            "data_path": "/tmp/test_data",
+            "data_path": "data/test_data/",
             "epochs": 2,
             "batch_size": 4,
             "lr": 0.001

@@ -65,5 +65,6 @@ arcgis_exports_final/
 .env
 .env.local
 
-# PyInstaller
-*.spec
+# Ablation & validation output
+ablation_output/
+validation/

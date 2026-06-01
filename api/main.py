@@ -13,6 +13,7 @@
 import os
 import torch
 import numpy as np
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -27,9 +28,6 @@ import json
 from datetime import datetime
 import asyncio
 import io
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
 
 # 导入项目模块
 import sys
@@ -39,27 +37,35 @@ from models.fusion_net_v5_edl import FusionCropNetV5EDL
 from data.preprocess_pipeline import PreprocessPipeline, PreprocessConfig
 from utils.metrics import compute_metrics
 from utils.monitoring import log_manager, log_info, log_error, log_inference, get_stats
-
-# 限流配置
-limiter = Limiter(key_func=get_remote_address)
+from utils.rate_limiter import RateLimitMiddleware
 
 # 初始化FastAPI应用
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global PIPELINE
+    try:
+        config = PreprocessConfig(
+            normalize=True, freeze_stats=True, sar_log_transform=True, augment=False
+        )
+        PIPELINE = PreprocessPipeline(config)
+        log_info("预处理管道初始化成功")
+    except Exception as e:
+        log_error("管道初始化失败", exception=e)
+    yield
+
 app = FastAPI(
     title="遥感影像作物分类API",
     description="基于深度学习的多模态遥感影像作物分类服务",
     version="1.1.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    lifespan=lifespan
 )
-
-# 注册限流处理器
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # 中间件配置
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.environ.get("CORS_ORIGINS", "http://localhost:8501,http://localhost:3000").split(","),
+    allow_origins=os.environ.get("CORS_ORIGINS", "http://localhost:8501,http://localhost:3000,http://localhost:5173").split(","),
     allow_credentials=False,
     allow_methods=["GET", "POST"],
     allow_headers=["X-API-Key", "Content-Type"],
@@ -67,8 +73,10 @@ app.add_middleware(
 
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+    allowed_hosts=os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1,testserver").split(",")
 )
+
+app.add_middleware(RateLimitMiddleware)
 
 # API密钥认证
 API_KEY = os.environ.get("API_KEY", "dev_key_change_in_production")
@@ -86,13 +94,13 @@ async def get_api_key(api_key: str = Depends(api_key_header)):
 async def log_requests(request, call_next):
     start_time = time.time()
     log_info(f"收到请求", method=request.method, path=request.url.path, client=request.client.host)
-    
+
     response = await call_next(request)
-    
+
     process_time = time.time() - start_time
-    log_info(f"请求完成", method=request.method, path=request.url.path, 
+    log_info(f"请求完成", method=request.method, path=request.url.path,
              status_code=response.status_code, duration_ms=process_time * 1000)
-    
+
     return response
 
 # 全局变量
@@ -110,7 +118,7 @@ class InferenceRequest(BaseModel):
     doy: List[float] = Field(..., description="归一化日序 [T]")
     n_passes: int = Field(1, ge=1, le=20, description="推理次数")
     use_tta: bool = Field(False, description="是否使用TTA")
-    
+
     @field_validator('opt_sequence')
     @classmethod
     def check_opt_shape(cls, v):
@@ -121,7 +129,7 @@ class InferenceRequest(BaseModel):
         return v
 
 class BatchInferenceRequest(BaseModel):
-    requests: List[InferenceRequest] = Field(..., min_items=1, max_items=100)
+    requests: List[InferenceRequest] = Field(..., min_length=1, max_length=100)
 
 class ModelLoadRequest(BaseModel):
     model_path: str = Field(..., description="模型文件路径")
@@ -171,19 +179,6 @@ class TaskResponse(BaseModel):
     task_id: str
     message: str
 
-# 启动时初始化管道（模型延迟加载）
-@app.on_event("startup")
-async def startup_event():
-    global PIPELINE
-    try:
-        config = PreprocessConfig(
-            normalize=True, freeze_stats=True, sar_log_transform=True, augment=False
-        )
-        PIPELINE = PreprocessPipeline(config)
-        log_info("预处理管道初始化成功")
-    except Exception as e:
-        log_error("管道初始化失败", exception=e)
-
 # 健康检查
 @app.get("/health", tags=["健康检查"])
 async def health_check(request: Request):
@@ -212,7 +207,7 @@ async def get_model_status(request: Request):
             "allocated_mb": torch.cuda.memory_allocated() / 1024 / 1024,
             "cached_mb": torch.cuda.memory_reserved() / 1024 / 1024
         }
-    
+
     return ModelStatusResponse(
         loaded=MODEL_LOADED,
         model_version=MODEL_VERSION,
@@ -222,10 +217,10 @@ async def get_model_status(request: Request):
 
 # 加载模型
 @app.post("/model/load", response_model=ModelStatusResponse, tags=["模型管理"])
-async def load_model(request: ModelLoadRequest, api_key: str = Depends(get_api_key)):
+async def load_model(body: ModelLoadRequest, api_key: str = Depends(get_api_key)):
     global MODEL, MODEL_LOADED
     try:
-        model_path = Path(request.model_path).resolve()
+        model_path = Path(body.model_path).resolve()
         allowed_dirs = [Path("/app/checkpoints").resolve(), Path("/app/models").resolve(),
                         Path.cwd().resolve() / "checkpoints", Path.cwd().resolve() / "pretrained_weights"]
         if not any(str(model_path).startswith(str(d)) for d in allowed_dirs):
@@ -249,7 +244,7 @@ async def load_model(request: ModelLoadRequest, api_key: str = Depends(get_api_k
         MODEL.load_state_dict(torch.load(model_path, map_location=DEVICE, weights_only=True))
         MODEL.eval()
         MODEL_LOADED = True
-        
+
         log_info("模型加载成功")
         return ModelStatusResponse(
             loaded=True,
@@ -263,47 +258,46 @@ async def load_model(request: ModelLoadRequest, api_key: str = Depends(get_api_k
 
 # 单样本推理
 @app.post("/inference", response_model=InferenceResponse, tags=["推理服务"])
-@limiter.limit("50/minute")
-async def inference(request: InferenceRequest):
+async def inference(body: InferenceRequest):
     if not MODEL_LOADED:
         raise HTTPException(status_code=503, detail="模型未加载")
-    
+
     start_time = time.time()
-    
+
     try:
-        opt_seq = np.array(request.opt_sequence, dtype=np.float32)
-        sar_seq = np.array(request.sar_sequence, dtype=np.float32) if request.sar_sequence else None
-        dem = np.array(request.dem_data, dtype=np.float32) if request.dem_data else None
-        doy = np.array(request.doy, dtype=np.float32)
-        
+        opt_seq = np.array(body.opt_sequence, dtype=np.float32)
+        sar_seq = np.array(body.sar_sequence, dtype=np.float32) if body.sar_sequence else None
+        dem = np.array(body.dem_data, dtype=np.float32) if body.dem_data else None
+        doy = np.array(body.doy, dtype=np.float32)
+
         T, C_opt, H, W = opt_seq.shape
-        
+
         raw_data = {
             'opt': opt_seq,
             'sar': sar_seq if sar_seq is not None else np.random.rand(T, 5, H, W).astype(np.float32),
             'dem': dem if dem is not None else np.random.rand(5, H, W).astype(np.float32),
             'doy': doy
         }
-        
+
         transforms = {'opt': {'target_size': (H, W)}, 'sar': {'target_size': (H, W)}, 'dem': {'target_size': (H, W)}}
         sample = PIPELINE.process(raw_data, transforms, is_training=False)
-        
+
         if sample is None:
             raise ValueError("数据预处理失败")
-        
+
         with torch.no_grad():
             opt_t = torch.from_numpy(sample.opt_seq).unsqueeze(0).to(DEVICE)
             sar_t = torch.from_numpy(sample.sar_seq).unsqueeze(0).to(DEVICE)
             dem_t = torch.from_numpy(sample.dem).unsqueeze(0).to(DEVICE)
             doy_t = torch.from_numpy(sample.doy).unsqueeze(0).to(DEVICE)
-            
+
             result = MODEL.predict_uncertainty(opt_t, sar_t, dem_t, doy_t,
-                                               n_passes=request.n_passes,
-                                               use_tta=request.use_tta)
-        
+                                               n_passes=body.n_passes,
+                                               use_tta=body.use_tta)
+
         inference_time = time.time() - start_time
         log_inference(inference_time, opt_seq.shape, success=True)
-        
+
         return InferenceResponse(
             success=True,
             message="推理成功",
@@ -315,22 +309,21 @@ async def inference(request: InferenceRequest):
             },
             inference_time=inference_time
         )
-    
+
     except Exception as e:
         log_error("推理失败", exception=e)
         raise HTTPException(status_code=500, detail=str(e))
 
 # 批量推理
 @app.post("/inference/batch", response_model=BatchInferenceResponse, tags=["推理服务"])
-@limiter.limit("20/minute")
-async def batch_inference(request: BatchInferenceRequest):
+async def batch_inference(body: BatchInferenceRequest):
     if not MODEL_LOADED:
         raise HTTPException(status_code=503, detail="模型未加载")
-    
+
     start_time = time.time()
     results = []
-    
-    for req in request.requests:
+
+    for req in body.requests:
         try:
             response = await inference(req)
             results.append(response)
@@ -339,10 +332,10 @@ async def batch_inference(request: BatchInferenceRequest):
                 success=False,
                 message=f"推理失败: {str(e)}"
             ))
-    
+
     total_time = time.time() - start_time
-    log_info(f"批量推理完成", count=len(request.requests), duration_ms=total_time * 1000)
-    
+    log_info(f"批量推理完成", count=len(body.requests), duration_ms=total_time * 1000)
+
     return BatchInferenceResponse(
         success=all(r.success for r in results),
         message="批量推理完成",
@@ -355,8 +348,7 @@ MAX_UPLOAD_SIZE = 500 * 1024 * 1024  # 500MB
 
 # 文件上传推理
 @app.post("/inference/file", tags=["推理服务"])
-@limiter.limit("10/minute")
-async def inference_file(request,
+async def inference_file(
     opt_file: UploadFile = File(...),
     sar_file: Optional[UploadFile] = None,
     dem_file: Optional[UploadFile] = None,
@@ -369,22 +361,22 @@ async def inference_file(request,
     for f in [opt_file, sar_file, dem_file, doy_file]:
         if f and f.size and f.size > MAX_UPLOAD_SIZE:
             raise HTTPException(status_code=413, detail=f"文件 {f.filename} 超过大小限制 ({MAX_UPLOAD_SIZE // 1024 // 1024}MB)")
-    
+
     try:
         opt_data = np.load(opt_file.file)
         sar_data = np.load(sar_file.file) if sar_file else None
         dem_data = np.load(dem_file.file) if dem_file else None
         doy_data = np.load(doy_file.file) if doy_file else np.linspace(0, 1, opt_data.shape[0])
-        
-        request = InferenceRequest(
+
+        inference_req = InferenceRequest(
             opt_sequence=opt_data.tolist(),
             sar_sequence=sar_data.tolist() if sar_data is not None else None,
             dem_data=dem_data.tolist() if dem_data is not None else None,
             doy=doy_data.tolist()
         )
-        
-        return await inference(request)
-    
+
+        return await inference(inference_req)
+
     except Exception as e:
         log_error("文件推理失败", exception=e)
         raise HTTPException(status_code=500, detail=str(e))
@@ -395,7 +387,7 @@ async def calculate_model_metrics(request: Request, predictions: List[List[int]]
     try:
         pred_np = np.array(predictions)
         label_np = np.array(labels)
-        metrics = calculate_metrics(pred_np, label_np)
+        metrics = compute_metrics(pred_np, label_np)
         return MetricsResponse(success=True, metrics=metrics)
     except Exception as e:
         log_error("指标计算失败", exception=e)
@@ -431,10 +423,10 @@ async def run_training(data_path: str, epochs: int, batch_size: int, lr: float):
         log_error("训练任务异常", exception=e)
 
 @app.post("/train", response_model=TaskResponse, tags=["训练管理"])
-async def start_training(request: TrainingRequest, background_tasks: BackgroundTasks):
+async def start_training(body: TrainingRequest, background_tasks: BackgroundTasks):
     task_id = f"train_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    background_tasks.add_task(run_training, request.data_path, request.epochs, request.batch_size, request.lr)
-    
+    background_tasks.add_task(run_training, body.data_path, body.epochs, body.batch_size, body.lr)
+
     return TaskResponse(
         success=True,
         task_id=task_id,
@@ -590,7 +582,7 @@ def _run_inference(model, name: str):
     return result
 
 @app.post("/predict/{model}", response_model=PredictResponse, tags=["Inference"])
-async def predict_model(model: str, request: PredictRequest):
+async def predict_model(model: str, body: PredictRequest):
     valid = {'v5', 'v5edl', 'v5pro', 'v6', 'tsvit'}
     if model not in valid:
         raise HTTPException(400, f"Unknown model '{model}'. Choose: {', '.join(valid)}")

@@ -39,8 +39,6 @@ def install_dependencies():
         "mypy>=1.5.0",
         "pytest>=7.4.0",
         "pytest-cov>=4.1.0",
-        "slowapi>=0.1.8",
-        "limits>=2.7.0",
         "email-validator>=2.0.0",
         "requests>=2.31.0"
     ]
