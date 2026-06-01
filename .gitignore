@@ -23,6 +23,7 @@ test_data/
 output/
 *.png
 *.jpg
+!v6_experiments_output/figures/*.png
 
 # IDE
 .vscode/
