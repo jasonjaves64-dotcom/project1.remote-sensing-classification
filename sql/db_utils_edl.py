@@ -5,12 +5,12 @@ from typing import Dict, List, Optional, Any
 import datetime
 
 class CropClassificationDBEDL:
-    def __init__(self, host='localhost', database='crop_classification', 
-                 user='root', password='', port=3306):
+    def __init__(self, host='localhost', database='crop_classification',
+                 user=None, password=None, port=3306):
         self.host = host
         self.database = database
-        self.user = user
-        self.password = password
+        self.user = user or os.environ.get('MYSQL_USER', 'root')
+        self.password = password if password is not None else os.environ.get('MYSQL_PASSWORD', '')
         self.port = port
         self.connection = None
 

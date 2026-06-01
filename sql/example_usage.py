@@ -1,12 +1,13 @@
+import os
 from sql.db_utils import CropClassificationDB
 
 def main():
     db = CropClassificationDB(
         host='localhost',
         database='crop_classification',
-        user='root',
-        password='',
-        port=3306
+        user=os.environ.get('MYSQL_USER', 'root'),
+        password=os.environ.get('MYSQL_PASSWORD', ''),
+        port=int(os.environ.get('MYSQL_PORT', '3306'))
     )
     
     try:
