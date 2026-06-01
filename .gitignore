@@ -23,6 +23,7 @@ test_data/
 output/
 *.png
 *.jpg
+!ablation_output/figures/*.png
 
 # IDE
 .vscode/
@@ -69,7 +70,8 @@ pretrained_weights/
 
 # Ablation & validation output (generated files ignored, results tracked)
 ablation_output/*
-!ablation_output/dem_ablation_results.json
+!ablation_output/figures/
+!ablation_output/v6_experiments_results.json
 validation/
 
 # Specific generated/legacy files
