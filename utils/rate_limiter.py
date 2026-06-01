@@ -62,7 +62,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     for Redis.
     """
 
-    def __init__(self, app, config: Optional[dict] = None):
+    def __init__(self, app, config: Optional[dict] = None, cleanup_interval: float = 60.0):
         super().__init__(app)
         if config is not None:
             self._config = config
@@ -70,6 +70,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             self._config = rate_limit_config
         self._windows: dict[str, list[float]] = defaultdict(list)
         self._lock = asyncio.Lock()
+        self._cleanup_interval = cleanup_interval
+        self._last_cleanup = time.monotonic()
 
     @staticmethod
     def _get_client_ip(request: Request) -> str:
@@ -112,11 +114,23 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 )
             timestamps.append(now)
 
-        # Periodic cleanup of stale keys (every ~100 requests, best-effort)
-        if hash(key) % 100 == 0:
+        # Time-based periodic cleanup of stale keys (replaces probabilistic hash%100)
+        if now - self._last_cleanup >= self._cleanup_interval:
             async with self._lock:
-                stale = [k for k, v in self._windows.items() if not v]
+                # Sweep: evict expired and remove fully-stale keys
+                stale = []
+                for k, v in self._windows.items():
+                    # Extract path from composite key "IP:path" to find per-route window
+                    sep = k.index(":") if ":" in k else len(k)
+                    path_k = k[sep+1:] if ":" in k else k
+                    _max, win = self._find_limit(path_k)
+                    cutoff_k = now - win
+                    while v and v[0] < cutoff_k:
+                        v.pop(0)
+                    if not v:
+                        stale.append(k)
                 for k in stale:
                     del self._windows[k]
+                self._last_cleanup = now
 
         return await call_next(request)

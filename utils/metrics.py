@@ -13,12 +13,20 @@ def compute_metrics(preds: torch.Tensor,
     oa = (preds == labels).float().mean().item()
 
     iou_list = []
+    precision_list = []
+    recall_list = []
+    f1_list = []
     for cls in range(1, num_classes):
         tp = ((preds == cls) & (labels == cls)).sum().float()
         fp = ((preds == cls) & (labels != cls)).sum().float()
         fn = ((preds != cls) & (labels == cls)).sum().float()
         iou = tp / (tp + fp + fn + 1e-6)
         iou_list.append(iou.item())
+        prec = tp / (tp + fp + 1e-6)
+        rec = tp / (tp + fn + 1e-6)
+        precision_list.append(prec.item())
+        recall_list.append(rec.item())
+        f1_list.append((2 * prec * rec / (prec + rec + 1e-6)).item())
 
     miou = sum(iou_list) / len(iou_list)
 
@@ -35,5 +43,9 @@ def compute_metrics(preds: torch.Tensor,
         "OA"       : oa,
         "mIoU"     : miou,
         "Kappa"    : kappa,
-        "IoU_per_class": iou_list
+        "IoU_per_class": iou_list,
+        "precision_per_class": precision_list,
+        "recall_per_class": recall_list,
+        "f1_per_class": f1_list,
+        "confusion_matrix": cm.cpu().numpy().tolist(),
     }

@@ -39,7 +39,7 @@ class SARProcessor(BasePreprocessor):
         return data.copy()
 
     def normalize_db(self, data: np.ndarray) -> np.ndarray:
-        data_db = 10 * np.log10(data + 1e-10)
+        data_db = 10 * np.log10(np.maximum(data, 1e-10))
         min_db = np.percentile(data_db, 1)
         max_db = np.percentile(data_db, 99)
         return np.clip((data_db - min_db) / (max_db - min_db + 1e-6), 0, 1)

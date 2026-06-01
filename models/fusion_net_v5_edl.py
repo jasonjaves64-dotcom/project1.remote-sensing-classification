@@ -175,9 +175,14 @@ class FusionCropNetV5EDL(nn.Module):
         # ── V6 enhancements (guarded by use_v6 flag) ──
         if self.use_v6:
             # Block 1: TemporalLite for high-resolution temporal encoding
-            self.temp_lite_s1 = TemporalLite(64, k=3)
-            self.temp_lite_s2 = TemporalLite(128, k=3)
-            self.temp_lite_opt_p2 = TemporalLite(256, k=3)
+            # Derive channel dims from SAR encoder config and feat_dim instead of
+            # hardcoding 64/128/256, so swapping the backbone or changing base_ch
+            # does not cause a runtime shape-mismatch crash.
+            _sar_ch1, _sar_ch2 = self.sar_enc.out_channels_list[0], self.sar_enc.out_channels_list[1]
+            _opt_p2_ch = feat_dim // 2
+            self.temp_lite_s1 = TemporalLite(_sar_ch1, k=3)
+            self.temp_lite_s2 = TemporalLite(_sar_ch2, k=3)
+            self.temp_lite_opt_p2 = TemporalLite(_opt_p2_ch, k=3)
             # Block 2: Early Fusion
             self.modal_norm = ModalNormalize()
             self.early_fusion = nn.Conv2d(10 + 5 + 5, 128, 1, bias=False)
@@ -266,8 +271,9 @@ class FusionCropNetV5EDL(nn.Module):
         return opt_seq, sar_seq, dem, cloud_mask, valid_count
 
     def _encode(self, opt_seq, sar_seq, dem, doy, cloud_mask, valid_count,
-                modality_mask=None, dem_ablation=None):
-        """Forward pass with optional DEM ablation control.
+                modality_mask=None, dem_ablation=None,
+                fusion_mask=None, block_mask=None):
+        """Forward pass with optional ablation control.
 
         Args:
             dem_ablation: optional dict to disable specific DEM injection points.
@@ -275,10 +281,28 @@ class FusionCropNetV5EDL(nn.Module):
                       'early_fusion', 'opt_cond', 'temporal_bias'.
                 True = enabled (default), False = disabled.
                 None = all enabled.
+            fusion_mask: optional dict to disable fusion mechanisms.
+                Keys: 'cross_modal', 'late_fusion', 'early_fusion'.
+                True = enabled (default), False = disabled.
+                None = all enabled.
+            block_mask: optional dict to disable V6 blocks.
+                Keys: 'temporal_lite', 'early_fusion', 'dem_opt_cond',
+                      'temporal_bias', 'multi_scale_cross_attn',
+                      'multi_task', 'scene_head'.
+                True = enabled (default), False = disabled.
+                None = all enabled.
         """
         if dem_ablation is None:
             dem_ablation = {}
         _dem = lambda k: dem_ablation.get(k, True)  # default: enabled
+
+        if fusion_mask is None:
+            fusion_mask = {}
+        _fus = lambda k: fusion_mask.get(k, True)
+
+        if block_mask is None:
+            block_mask = {}
+        _blk = lambda k: block_mask.get(k, True)
 
         if modality_mask is None:
             use_opt, use_sar, use_dem = True, True, True
@@ -312,7 +336,7 @@ class FusionCropNetV5EDL(nn.Module):
         dem_feat = F.interpolate(dem_feat, (H, W), mode='bilinear', align_corners=False)
 
         # V6 Block 2: Early Fusion (only when use_v6=True)
-        if self.use_v6 and use_opt and use_sar and use_dem and _dem('early_fusion'):
+        if self.use_v6 and use_opt and use_sar and use_dem and _dem('early_fusion') and _fus('early_fusion') and _blk('early_fusion'):
             opt_for_early = opt_seq[:, 0] if opt_seq.dim() == 5 else opt_seq
             sar_for_early = sar_seq[:, 0] if sar_seq.dim() == 5 else sar_seq
             unified_early = self.modal_norm(opt_for_early, sar_for_early, dem)
@@ -335,7 +359,7 @@ class FusionCropNetV5EDL(nn.Module):
         _, D, H2, W2 = opt_feat.shape
 
         # V6 Block 3: DEM → Optical FiLM (only when use_v6=True)
-        if self.use_v6 and use_dem and use_opt and _dem('opt_cond'):
+        if self.use_v6 and use_dem and use_opt and _dem('opt_cond') and _blk('dem_opt_cond'):
             dem_feat_tiled = dem_feat.unsqueeze(1).expand(-1, T, -1, -1, -1).reshape(B * T, -1, H, W)
             opt_feat, opt_p2 = self.dem_opt_cond(opt_feat, opt_p2, dem_feat_tiled)
 
@@ -344,8 +368,8 @@ class FusionCropNetV5EDL(nn.Module):
             dem_tiled = dem_feat.unsqueeze(1).expand(-1, T, -1, -1, -1).reshape(B * T, -1, H, W)
             sar_s1, sar_s2, sar_s3 = self.sar_enc(sar_flat, dem_feat=dem_tiled if _dem('sar_film') else None)
         else:
-            sar_s1 = torch.zeros(B * T, 64, H, W, device=opt_feat.device)
-            sar_s2 = torch.zeros(B * T, 128, H // 2, W // 2, device=opt_feat.device)
+            sar_s1 = torch.zeros(B * T, self.sar_enc.out_channels_list[0], H, W, device=opt_feat.device)
+            sar_s2 = torch.zeros(B * T, self.sar_enc.out_channels_list[1], H // 2, W // 2, device=opt_feat.device)
             sar_s3 = self.placeholder_sar.expand(B * T, -1, H2, W2)
 
         if cloud_mask is not None and use_opt:
@@ -367,7 +391,7 @@ class FusionCropNetV5EDL(nn.Module):
         opt_ts = self._to_pixel_seq(opt_feat, B, T, H2, W2, D)
         sar_ts = self._to_pixel_seq(sar_s3, B, T, H2, W2, D)
         # V6 Block 3: DEM → Temporal FiLM (only when use_v6=True)
-        if self.use_v6 and use_dem and _dem('temporal_bias'):
+        if self.use_v6 and use_dem and _dem('temporal_bias') and _blk('temporal_bias'):
             dem_temporal = F.adaptive_avg_pool2d(dem_feat, (H2, W2))
             dem_temporal_flat = dem_temporal.permute(0, 2, 3, 1).reshape(B * H2 * W2, -1)
             dem_temporal_bias = self.dem_temporal_proj(dem_temporal_flat).unsqueeze(1)
@@ -391,7 +415,7 @@ class FusionCropNetV5EDL(nn.Module):
         opt_global = opt_g.view(B, H2, W2, D).permute(0, 3, 1, 2)
         sar_global = sar_g.view(B, H2, W2, D).permute(0, 3, 1, 2)
 
-        if use_opt and use_sar:
+        if use_opt and use_sar and _fus('cross_modal'):
             xm_feat = self.cross_modal(opt_global, sar_global)
         elif use_opt:
             xm_feat = opt_global
@@ -405,7 +429,7 @@ class FusionCropNetV5EDL(nn.Module):
         opt_f = opt_global.permute(0, 2, 3, 1).reshape(B * H2 * W2, D)
         sar_f = sar_global.permute(0, 2, 3, 1).reshape(B * H2 * W2, D)
 
-        if use_opt and use_sar:
+        if use_opt and use_sar and _fus('late_fusion'):
             final = self.late_fuse(xm_f, opt_f, sar_f)
         else:
             final = xm_f
@@ -413,7 +437,7 @@ class FusionCropNetV5EDL(nn.Module):
         final = final.view(B, H2, W2, D).permute(0, 3, 1, 2)
 
         # V6 Block 1+4: TemporalLite + Multi-scale cross-modal attention
-        if self.use_v6:
+        if self.use_v6 and _blk('temporal_lite'):
             opt_p2_ch = opt_p2.shape[1]
             sar_s1_ch = sar_s1.shape[1]
             sar_s2_ch = sar_s2.shape[1]
@@ -424,22 +448,27 @@ class FusionCropNetV5EDL(nn.Module):
             sar_s1a = self.temp_lite_s1(sar_s1_seq).view(B, H, W, sar_s1_ch).permute(0, 3, 1, 2)
             sar_s2a = self.temp_lite_s2(sar_s2_seq).view(B, H//2, W//2, sar_s2_ch).permute(0, 3, 1, 2)
             # H scale: opt projection ↔ sar_s1
-            if use_opt and use_sar:
-                opt_h = self.opt_to_h(opt_p2a)
-                opt_h = F.interpolate(opt_h, size=sar_s1a.shape[-2:], mode='bilinear', align_corners=False)
-                cross_h = self.cross_modal_h(opt_h, sar_s1a)
-            elif use_opt:
-                opt_h = self.opt_to_h(opt_p2a)
-                cross_h = F.interpolate(opt_h, size=sar_s1a.shape[-2:], mode='bilinear', align_corners=False)
+            if _blk('multi_scale_cross_attn'):
+                if use_opt and use_sar:
+                    opt_h = self.opt_to_h(opt_p2a)
+                    opt_h = F.interpolate(opt_h, size=sar_s1a.shape[-2:], mode='bilinear', align_corners=False)
+                    cross_h = self.cross_modal_h(opt_h, sar_s1a)
+                elif use_opt:
+                    opt_h = self.opt_to_h(opt_p2a)
+                    cross_h = F.interpolate(opt_h, size=sar_s1a.shape[-2:], mode='bilinear', align_corners=False)
+                else:
+                    cross_h = sar_s1a
+                # H/2 scale: opt projection ↔ sar_s2
+                if use_opt and use_sar:
+                    opt_h2 = self.opt_to_h2(opt_p2a)
+                    cross_h2 = self.cross_modal_h2(opt_h2, sar_s2a)
+                elif use_opt:
+                    cross_h2 = self.opt_to_h2(opt_p2a)
+                else:
+                    cross_h2 = sar_s2a
             else:
+                # Multi-scale cross-modal attention disabled — raw SAR features
                 cross_h = sar_s1a
-            # H/2 scale: opt projection ↔ sar_s2
-            if use_opt and use_sar:
-                opt_h2 = self.opt_to_h2(opt_p2a)
-                cross_h2 = self.cross_modal_h2(opt_h2, sar_s2a)
-            elif use_opt:
-                cross_h2 = self.opt_to_h2(opt_p2a)
-            else:
                 cross_h2 = sar_s2a
             pre_head = self.decoder(final,
                                     opt_skips=(opt_p2a,),
@@ -466,19 +495,35 @@ class FusionCropNetV5EDL(nn.Module):
     def forward(self, opt_seq, sar_seq, dem, doy,
                 cloud_mask=None, valid_count=None, epoch: int = 0,
                 modality_mask=None, return_aux: bool = False,
-                dem_ablation=None):
+                dem_ablation=None, fusion_mask=None, block_mask=None):
         (pre_head, ndvi_pred, opt_seq_out,
          cm_px, B, T, H2, W2, D, H, W, opt_f) = self._encode(
              opt_seq, sar_seq, dem, doy, cloud_mask, valid_count,
-             modality_mask=modality_mask, dem_ablation=dem_ablation)
+             modality_mask=modality_mask, dem_ablation=dem_ablation,
+             fusion_mask=fusion_mask, block_mask=block_mask)
         alpha = self.edl_head(pre_head)
 
-        # V6 Block 5+7: Multi-task auxiliary predictions (only when use_v6=True)
-        if self.use_v6 and return_aux:
+        # V6 Block 5+7: Multi-task auxiliary predictions
+        if block_mask is None:
+            block_mask = {}
+        _blk = lambda k: block_mask.get(k, True)
+
+        if self.use_v6 and return_aux and _blk('multi_task'):
             lai_pred = self.lai_head(pre_head)
             growth_pred = self.growth_head(pre_head)
             boundary_pred = self.boundary_head(pre_head)
+        if self.use_v6 and return_aux and _blk('scene_head'):
             scene_logits, crop_mix = self.scene_head(pre_head)
+
+        # Provide defaults for disabled blocks
+        if self.use_v6 and return_aux:
+            if not _blk('multi_task'):
+                lai_pred = torch.zeros(B, 1, H, W, device=alpha.device)
+                growth_pred = torch.zeros(B, 4, H, W, device=alpha.device)
+                boundary_pred = torch.zeros(B, 1, H, W, device=alpha.device)
+            if not _blk('scene_head'):
+                scene_logits = torch.zeros(B, 4, device=alpha.device)
+                crop_mix = torch.zeros(B, self.edl_head.num_classes, device=alpha.device)
 
         if self.training:
             if self.use_v6 and cm_px is not None:
@@ -506,7 +551,9 @@ class FusionCropNetV5EDL(nn.Module):
                             n_passes: int = 10,
                             use_tta: bool = True,
                             modality_mask=None,
-                            dem_ablation=None) -> dict[str, torch.Tensor]:
+                            dem_ablation=None,
+                            fusion_mask=None,
+                            block_mask=None) -> dict[str, torch.Tensor]:
         self.eval()
         for m in self.edl_head.modules():
             if isinstance(m, nn.Dropout2d):
@@ -517,7 +564,9 @@ class FusionCropNetV5EDL(nn.Module):
 
         def _single_pass(args):
             pre_head, *_ = self._encode(*args, modality_mask=modality_mask,
-                                        dem_ablation=dem_ablation)
+                                        dem_ablation=dem_ablation,
+                                        fusion_mask=fusion_mask,
+                                        block_mask=block_mask)
             return self.edl_head(pre_head)
 
         with torch.no_grad():

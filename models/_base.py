@@ -422,7 +422,7 @@ class TemporalEncoderStream(nn.Module):
         enc_layer = nn.TransformerEncoderLayer(
             d_model=d_model, nhead=n_heads, dim_feedforward=d_model * 4,
             dropout=dropout, activation='gelu', batch_first=True, norm_first=True)
-        self.transformer = nn.TransformerEncoder(enc_layer, num_layers=n_layers)
+        self.transformer = nn.TransformerEncoder(enc_layer, num_layers=n_layers, enable_nested_tensor=False)
         self.norm = nn.LayerNorm(d_model)
 
     def forward(self, x, doy, cloud_mask=None, valid_count=None, fallback_feat=None):

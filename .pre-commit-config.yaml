@@ -1,0 +1,58 @@
+# Pre-commit hooks for FusionCropNet
+# Install: pip install pre-commit && pre-commit install
+# Run manually: pre-commit run --all-files
+#
+# Hooks:
+#   1. Basic file hygiene (trailing whitespace, EOF, YAML, merge conflicts)
+#   2. Ruff linting + formatting (Python)
+#   3. Detect uncommitted git changes (safety net)
+#   4. PyTest fast suite (blocking tests only)
+
+repos:
+  # ── File hygiene ──────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: \.md$|\.ipynb$
+      - id: end-of-file-fixer
+        exclude: \.md$|\.json$|\.ipynb$
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=5000]
+      - id: detect-private-key
+
+  # ── Python linting + formatting (ruff) ────────────────────────
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.0
+    hooks:
+      - id: ruff
+        name: ruff (lint)
+        args: [--fix, --exit-non-zero-on-fix]
+        files: \.py$
+      - id: ruff-format
+        name: ruff (format)
+        files: \.py$
+
+  # ── Detect uncommitted changes (safety net) ───────────────────
+  - repo: local
+    hooks:
+      - id: check-uncommitted
+        name: check for uncommitted changes
+        entry: bash -c 'git diff --quiet && git diff --cached --quiet || { echo "UNCOMMITTED CHANGES DETECTED — commit or stash before push"; git diff --stat; exit 1; }'
+        language: system
+        stages: [pre-push]
+        pass_filenames: false
+
+  # ── PyTest fast suite ─────────────────────────────────────────
+  - repo: local
+    hooks:
+      - id: pytest-fast
+        name: pytest (fast suite)
+        entry: bash -c 'python -m pytest tests/ -x -q --tb=short -m "not slow" 2>&1'
+        language: system
+        stages: [pre-push]
+        pass_filenames: false
+        require_serial: true
