@@ -67,8 +67,9 @@ pretrained_weights/
 .env
 .env.local
 
-# Ablation & validation output
-ablation_output/
+# Ablation & validation output (generated files ignored, results tracked)
+ablation_output/*
+!ablation_output/dem_ablation_results.json
 validation/
 
 # Specific generated/legacy files
