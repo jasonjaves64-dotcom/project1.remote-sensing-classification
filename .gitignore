@@ -41,13 +41,18 @@ test_logs/
 # ArcGIS exports
 arcgis_exports/
 arcgis_exports_edl/
+arcgis_exports_final/
 
 # Test output
 test_output/
+test_output.txt
+best_model.pth
+prediction_result.png
 
 # Temporary
 *.tmp
 *.temp
+
 # Coverage
 .coverage
 htmlcov/
@@ -58,9 +63,6 @@ htmlcov/
 # Pretrained weights (too large for GitHub)
 pretrained_weights/
 
-# ArcGIS exports
-arcgis_exports_final/
-
 # Environment
 .env
 .env.local
@@ -68,3 +70,9 @@ arcgis_exports_final/
 # Ablation & validation output
 ablation_output/
 validation/
+
+# Specific generated/legacy files
+gee_download.py
+models/fusion_net.py
+train_fusion.py
+predict.py
