@@ -1,0 +1,133 @@
+# ============================================================================
+# FusionCropNetV6 — Production Configuration
+# Single source of truth for all tunable parameters.
+# ============================================================================
+
+model:
+  name: "FusionCropNetV6"
+  version: "6.0"
+
+  # Input dimensions
+  opt_ch: 10
+  sar_ch: 5
+  dem_ch_in: 5
+  num_classes: 7
+
+  # Architecture
+  feat_dim: 512
+  backbone: "resnet50"
+  pretrained: true
+  rs_weights_path: null  # SeCo pre-trained weights path
+
+  # Transformer
+  n_heads: 16
+  win_size: 4
+  n_layers: 4
+
+  # Input handling
+  max_obs: 24
+  n_freqs: 4
+  drop_timestep_p: 0.1
+
+  # EDL
+  edl_dropout_p: 0.3
+  edl_lambda_max: 0.5
+  edl_anneal_ep: 50
+
+  # V6-specific
+  modality_dropout_p: 0.1
+  use_gradient_checkpointing: true
+
+# ── Mathematical Theory Modules ──────────────────────────────────────────
+math:
+  geometric_invariants:
+    enabled: true
+    normalize_gradient: true      # Clamp slopes > 80° to prevent overflow
+    siren_omega_0: 30.0
+
+  grassmann_ot:
+    enabled: true
+    subspace_dim: 32
+    n_projections: 32            # SGW random projection count
+    alpha: 0.1                   # Grassmann regularization weight
+    lambda_ot: 0.1               # Unbalanced OT regularization
+
+  topological_evidence:
+    enabled: true
+    kappa_threshold: 0.3         # DS conflict detection threshold
+    high_order_threshold: 0.7    # H¹ non-triviality threshold
+    persistence_threshold: 0.3   # Barcode persistence filter
+
+  tta:
+    enabled: false               # Disabled by default (training-time only)
+    max_steps: 8
+    base_lr: 1.0e-4
+    ntk_max_drift: 0.05
+    ema_decay: 0.99
+
+  spectral_init:
+    enabled: true                # Spectral-Balanced Init for TemporalLite
+
+# ── Training ─────────────────────────────────────────────────────────────
+training:
+  phase1_epochs: 20
+  phase2_epochs: 60
+  batch_size: 8
+  lr: 1.0e-4
+  weight_decay: 1.0e-4
+
+  # Multi-task loss weights (initial, auto-tuned by uncertainty weighting)
+  loss_weights:
+    crop: 1.0
+    ndvi: 0.1
+    lai: 0.3
+    growth: 0.2
+    boundary: 0.1
+    consistency: 0.05
+
+  # Optimizer
+  optimizer: "adamw"
+  scheduler: "cosine"
+  warmup_epochs: 0              # Spectral-Balanced Init removes warmup need
+
+  # Mixed precision
+  amp: true
+  amp_dtype: "float16"
+
+  # Gradient accumulation
+  grad_accum_steps: 1
+
+# ── Inference ────────────────────────────────────────────────────────────
+inference:
+  batch_size: 1
+  n_passes_default: 1
+  use_tta_default: false
+
+  # ONNX export
+  onnx_opset: 17
+  onnx_simplify: true
+
+  # Caching
+  cache_enabled: true
+  cache_max_size: 128           # LRU cache entries
+
+# ── Deployment ───────────────────────────────────────────────────────────
+deployment:
+  host: "0.0.0.0"
+  port: 8000
+  workers: 1
+  cors_origins: ["http://localhost:3000", "http://localhost:8501"]
+
+  # Rate limiting
+  rate_limit: "100/minute"
+
+  # Model paths
+  checkpoint_dir: "checkpoints/"
+  export_dir: "exports/"
+
+# ── Logging ──────────────────────────────────────────────────────────────
+logging:
+  level: "INFO"
+  log_dir: "logs/"
+  structured: true
+  monitor_interval: 60           # seconds between health checks
