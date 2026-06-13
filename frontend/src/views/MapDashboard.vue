@@ -130,12 +130,95 @@
           </div>
           <div v-else class="state empty">V6 multi-task outputs appear here.</div>
         </section>
+
+        <!-- Geometric Invariants -->
+        <section class="panel-section" v-if="store.modelType === 'v6' && store.geoInvariants">
+          <h3>📐 GEOMETRIC INVARIANTS</h3>
+          <div class="aux-grid">
+            <div class="aux-item">
+              <div class="aux-name">K (Gaussian)</div>
+              <div class="aux-val">{{ fmtNum(store.geoInvariants.K_mean) }}</div>
+            </div>
+            <div class="aux-item">
+              <div class="aux-name">H (Mean)</div>
+              <div class="aux-val">{{ fmtNum(store.geoInvariants.H_mean) }}</div>
+            </div>
+            <div class="aux-item">
+              <div class="aux-name">κ₁ (Max)</div>
+              <div class="aux-val">{{ fmtNum(store.geoInvariants.k1_mean) }}</div>
+            </div>
+            <div class="aux-item">
+              <div class="aux-name">κ₂ (Min)</div>
+              <div class="aux-val">{{ fmtNum(store.geoInvariants.k2_mean) }}</div>
+            </div>
+            <div class="aux-item" style="grid-column:1/-1">
+              <div class="aux-name">τ_g (Torsion)</div>
+              <div class="aux-val">{{ fmtNum(store.geoInvariants.tau_g_mean) }}</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Conflict Analysis -->
+        <section class="panel-section" v-if="store.modelType === 'v6' && store.conflictAnalysis">
+          <h3>🧬 CONFLICT ANALYSIS</h3>
+          <div class="metric-row">
+            <span>Type</span>
+            <span class="val" :class="conflictClass">{{ store.conflictAnalysis.conflict_type || '—' }}</span>
+          </div>
+          <div class="metric-row">
+            <span>κ (Conflict)</span>
+            <span class="val">{{ fmtNum(store.conflictAnalysis.kappa) }}</span>
+          </div>
+          <div class="metric-row">
+            <span>H¹ Norm</span>
+            <span class="val">{{ fmtNum(store.conflictAnalysis.h1_norm) }}</span>
+          </div>
+          <div class="bar-chart" style="margin-top:8px">
+            <div class="bar-row">
+              <span class="bar-label">Noise</span>
+              <div class="bar-track"><div class="bar-fill safe" :style="{width: (store.conflictAnalysis.noise_ratio*100).toFixed(1)+'%'}"></div></div>
+              <span class="bar-val">{{ (store.conflictAnalysis.noise_ratio*100).toFixed(0) }}%</span>
+            </div>
+            <div class="bar-row">
+              <span class="bar-label">Structural</span>
+              <div class="bar-track"><div class="bar-fill warn" :style="{width: (store.conflictAnalysis.structural_ratio*100).toFixed(1)+'%'}"></div></div>
+              <span class="bar-val">{{ (store.conflictAnalysis.structural_ratio*100).toFixed(0) }}%</span>
+            </div>
+            <div class="bar-row">
+              <span class="bar-label">HighOrder</span>
+              <div class="bar-track"><div class="bar-fill danger" :style="{width: (store.conflictAnalysis.high_order_ratio*100).toFixed(1)+'%'}"></div></div>
+              <span class="bar-val">{{ (store.conflictAnalysis.high_order_ratio*100).toFixed(0) }}%</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- TTA Safety -->
+        <section class="panel-section" v-if="store.modelType === 'v6' && store.ttaStatus">
+          <h3>🛡 TTA SAFETY</h3>
+          <div class="metric-row">
+            <span>Level</span>
+            <span class="val" :class="ttaLevelClass">{{ ttaLevelLabel }}</span>
+          </div>
+          <div class="metric-row">
+            <span>∇ Alignment</span>
+            <span class="val">{{ fmtNum(store.ttaStatus.gradient_alignment) }}</span>
+          </div>
+          <div class="metric-row">
+            <span>C_coh</span>
+            <span class="val">{{ fmtNum(store.ttaStatus.cohomology_conflict) }}</span>
+          </div>
+          <div class="metric-row" v-if="store.ttaStatus.total_interventions">
+            <span>Interventions</span>
+            <span class="val">L1:{{ store.ttaStatus.total_interventions.L1 }} L2:{{ store.ttaStatus.total_interventions.L2 }} L3:{{ store.ttaStatus.total_interventions.L3 }}</span>
+          </div>
+        </section>
       </aside>
     </div>
   </div>
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import { useAnalysisStore } from '../stores/analysis'
 import MapView from '../components/MapView.vue'
 
@@ -159,6 +242,22 @@ function formatSize(bytes) {
   if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB'
   return (bytes/1024/1024).toFixed(1) + ' MB'
 }
+function fmtNum(v) {
+  if (v === undefined || v === null) return '—'
+  if (Math.abs(v) < 0.0001) return v.toExponential(2)
+  return Number(v).toFixed(4)
+}
+
+const conflictClass = computed(() => ({
+  'Noise': 'safe', 'Structural': 'warn', 'HighOrder': 'danger'
+}[store.conflictAnalysis?.conflict_type] || ''))
+
+const ttaLevelLabel = computed(() => {
+  const level = store.ttaStatus?.intervention_level || 0
+  return ['🟢 Normal', '🟡 Light (halve LR)', '🟠 Paused', '🔴 Rollback'][level] || '—'
+})
+const ttaLevelClass = computed(() => ['safe', 'warn', 'warn', 'danger'][store.ttaStatus?.intervention_level || 0])
+
 function onFileSelect(e) { store.addFiles(e.target.files); e.target.value = '' }
 function removeFile(name) { store.removeFile(name) }
 function clearFiles() { store.clearFiles() }
@@ -242,6 +341,14 @@ function onAOIReady() {
 /* ── Spinner ── */
 .spinner { width:14px; height:14px; border:2px solid rgba(255,255,255,0.2); border-top-color:#fff; border-radius:50%; animation:spin 0.6s linear infinite; display:inline-block }
 @keyframes spin { to { transform:rotate(360deg) } }
+
+/* ── Conflict/TTA Colors ── */
+.val.safe { color:#4ade80 }
+.val.warn { color:#f59e0b }
+.val.danger { color:#ef4444 }
+.bar-fill.safe { background:#4ade80 }
+.bar-fill.warn { background:#f59e0b }
+.bar-fill.danger { background:#ef4444 }
 
 @media (max-width:900px) {
   .panel { width:280px }

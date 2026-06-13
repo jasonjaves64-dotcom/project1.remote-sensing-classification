@@ -66,6 +66,18 @@ arcgis_exports_final/
 ablation_output/
 validation/
 
+# Thesis compilation artifacts (keep .tex/.bib/chapters/ source)
+thesis/*.aux
+thesis/*.log
+thesis/*.out
+thesis/*.toc
+thesis/*.synctex.gz
+thesis/*.pdf
+thesis/*.blg
+thesis/*.bbl
+thesis/*.fdb_latexmk
+thesis/*.fls
+
 # Environment
 .env
 .env.local
