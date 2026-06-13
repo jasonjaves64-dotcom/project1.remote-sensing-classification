@@ -3,8 +3,10 @@
 """
 import pytest
 import os
+import sys
 import json
 import tempfile
+import warnings
 import numpy as np
 import torch
 from pathlib import Path
@@ -107,7 +109,11 @@ class TestTorchScriptExport:
             path = os.path.join(tmpdir, "test.pt")
             export_to_torchscript(model, path, opt_channels=10,
                                   sar_channels=5, seq_len=12, patch_size=32)
-            loaded = torch.jit.load(path)
+            # Suppress DeprecationWarning for torch.jit.load on Python 3.14+
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore', category=DeprecationWarning,
+                                        message='.*torch.jit.load.*')
+                loaded = torch.jit.load(path)
             loaded.eval()
             with torch.no_grad():
                 ts_opt = torch.randn(1, 12, 10, 32, 32)
