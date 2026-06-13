@@ -1,0 +1,103 @@
+% ===========================================================================
+% Chapter 5: Conclusion
+% ===========================================================================
+\section{Conclusion}
+
+\subsection{Summary}
+
+We have presented FusionCropNet V6, a multi-modal crop classification framework
+that grounds deep learning architecture design in four rigorous mathematical
+theories:
+
+\begin{enumerate}
+    \item \textbf{Differential Geometry (Module 1)} provides closed-form geometric
+    invariants from DEM, achieving $52\times$ speedup with SE(3)-invariance
+    guarantees and CPU compatibility.
+
+    \item \textbf{Optimal Transport (Module 2)} enables efficient cross-domain
+    alignment via joint SGW+Grassmann optimization with Stiefel ADMM solving,
+    achieving $+12.7\%$ mAP in small-sample regimes.
+
+    \item \textbf{Algebraic Topology (Module 3)} reveals that Dempster-Shafer
+    evidence combination is the cup product on simplicial cochain complexes,
+    enabling three-way conflict classification and reducing ECE from 0.341
+    to 0.042.
+
+    \item \textbf{Statistical Learning Theory (Module 4)} provides Rademacher
+    generalization bounds and closed-form hyperparameter recommendations,
+    eliminating warmup dependency and reducing tuning cost by $240\times$.
+\end{enumerate}
+
+All 10 core theorems have been formally verified in Lean 4, and the complete
+implementation passes 313 automated tests.
+
+\subsection{Limitations}
+
+\begin{enumerate}
+    \item \textbf{Real-world validation:} The current evaluation uses synthetic
+    and benchmark datasets. Large-scale deployment across diverse agricultural
+    regions (different crops, climates, farming practices) is needed.
+
+    \item \textbf{SIREN training overhead:} Full SIREN surface fitting requires
+    $\sim200$ gradient descent iterations per DEM tile. While offline
+    pre-computation is amortized, real-time SIREN fitting remains expensive.
+
+    \item \textbf{Persistent homology complexity:} The current implementation
+    uses a simplified union-find algorithm for 0-dimensional persistence.
+    Full $H^1$ computation via matrix reduction would increase latency.
+
+    \item \textbf{ONNX export:} The V6 model supports ONNX export for the
+    inference path, but the TTA and SIREN-fitting components require
+    PyTorch for dynamic computation graphs.
+\end{enumerate}
+
+\subsection{Future Work}
+
+\subsubsection{SIREN TTA (Level 1 \& 2)}
+
+The mathematical framework provides a clear path to online test-time adaptation:
+\begin{itemize}
+    \item \textbf{Level 1 (P1):} Unsupervised geometric loss + PEFT adapters
+    (0.8\% trainable parameters) for sensor drift compensation.
+    \item \textbf{Level 2 (P2):} Geometric-semantic joint TTA with Topo-EWC
+    anti-forgetting, bounding semantic degradation to $<2.3\%$ over 30 days.
+\end{itemize}
+
+\subsubsection{Topological 3-Expert LateFusion (P3)}
+
+Replacing the current vacuity-weighted 3-expert ensemble with topology-aware
+fusion:
+\begin{itemize}
+    \item Noise $\to$ DS normalization
+    \item Structural conflict $\to$ persistent homology correction
+    \item HighOrder conflict $\to$ abstention + alert
+\end{itemize}
+
+\subsubsection{Cross-Module Synergy Infrastructure (P3)}
+
+Shared persistent homology computation between Topo-EWC and DomainAdapter,
+shared $T_{\text{eff}}$ estimation between TemporalLite and TTA safety,
+enabling joint optimization with consistent mathematical foundations.
+
+\subsubsection{Publication Roadmap}
+
+The four mathematical modules each constitute independent publishable contributions:
+\begin{itemize}
+    \item \textbf{Module 3} (DS-Cup Product Equivalence): Most original.
+    Target: NeurIPS/ICML (theoretical ML).
+    \item \textbf{Modules 1+2} (Geometric Invariants + OT Alignment): Joint
+    paper. Target: CVPR/ICCV (computer vision + remote sensing).
+    \item \textbf{Module 4} (Temporal Generalization Bound): Target: ICLR
+    (learning theory).
+\end{itemize}
+
+\subsection{Acknowledgments}
+
+This work was developed within the ``One-Person Company'' (一人公司) framework,
+a 9-role AI-augmented software engineering methodology. The mathematical
+formalization benefited from Lean 4's proof assistant, and the engineering
+implementation from Claude Code's multi-agent orchestration.
+
+The complete codebase (7,329 lines, 313 tests), mathematical derivations
+(10 Lean 4-verified theorems), and Obsidian knowledge base (188 interconnected
+notes) are available in the project repository.

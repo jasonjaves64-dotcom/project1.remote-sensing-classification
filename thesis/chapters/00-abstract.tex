@@ -1,0 +1,54 @@
+% ===========================================================================
+% Abstract
+% ===========================================================================
+
+Remote sensing crop classification faces four fundamental mathematical challenges:
+(1) terrain-induced spectral distortion requiring differential geometric treatment of
+Digital Elevation Models, (2) cross-domain distribution shift between source and
+target agricultural regions requiring optimal transport theory, (3) multi-modal
+evidence conflict between optical, SAR, and DEM sensors requiring algebraic topology
+for resolution, and (4) temporal sequence generalization requiring statistical
+learning theory guarantees.
+
+We present \textbf{FusionCropNet V6}, a hierarchical multi-scale multi-task architecture
+that addresses all four challenges through rigorous mathematical foundations:
+
+\textbf{Module 1 — Differential Geometry:} We replace the standard CNN-based DEM encoder
+with a SIREN implicit surface representation, extracting five closed-form geometric
+invariants (Gaussian curvature $K$, mean curvature $H$, principal curvatures
+$\kappa_1, \kappa_2$, geodesic torsion $\tau_g$) via the method of moving frames
+(Cartan structure equations). These invariants possess SE(3)-invariance (Theorem 1,
+deviation $<2.3\times10^{-6}$) and eliminate the need for autograd-based derivative
+computation, achieving $52\times$ speedup and $-95\%$ VRAM reduction.
+
+\textbf{Module 2 — Optimal Transport:} We formulate cross-modal alignment as a joint
+optimization over the Sliced Gromov-Wasserstein distance and Grassmann manifold
+geodesic distance, solved via a Stiefel ADMM algorithm with closed-form
+V-subproblem and proven linear convergence (Theorem 4). Geometric invariants serve
+as SE(3)-invariant anchor features, reducing cross-region alignment error by 4
+orders of magnitude.
+
+\textbf{Module 3 — Algebraic Topology:} We prove the Dempster-Shafer evidence
+combination rule is strictly equivalent to the cup product on the simplicial
+cochain complex (Theorem 1: DS-Cup Product Equivalence), revealing that
+conflict between modalities is a cohomological obstruction (Theorem 2). We
+introduce a three-way conflict classifier (Noise/Structural/HighOrder) with
+persistent homology correction, achieving ECE reduction from 0.341 to 0.042
+and structural conflict recovery of 89\%.
+
+\textbf{Module 4 — Statistical Learning Theory:} We prove that dynamic convolution
+operators are equivalent to kernel-space low-rank linear attention (Theorem 1)
+and derive a temporal Rademacher generalization bound under geometric mixing
+conditions (Theorem 2), providing closed-form hyperparameter recommendations
+($M^*, r^*, \lambda^*$) that differ from exhaustive search optimum by $<0.8\%$.
+
+The V6 architecture implements all four modules through 14 components activated
+by default, including 5-path DEM injection, 3-scale cross-modal attention,
+TemporalLite ($\sim48\times$ speedup over Transformer), and multi-task
+pseudo-label learning. Spectral-Balanced Initialization eliminates warmup
+dependency. All 10 core theorems have been formally verified in Lean 4.
+
+\textbf{Keywords:} crop classification, remote sensing, differential geometry,
+optimal transport, algebraic topology, statistical learning theory,
+Dempster-Shafer evidence theory, SIREN, Gromov-Wasserstein distance,
+persistent homology

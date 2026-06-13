@@ -1,0 +1,342 @@
+% ===========================================================================
+% Chapter 3B: Geographic Analysis — Northeast Plain & North China Plain
+% ===========================================================================
+\section{Study Area: Northeast Plain and North China Plain}
+
+This study targets the two most important grain-producing regions of China:
+the \textbf{Northeast China Plain} (东北平原, $43^\circ$--$48^\circ$N) and the
+\textbf{North China Plain} (华北平原, $32^\circ$--$40^\circ$N). Together they
+account for approximately 45\% of China's total grain output. The contrasting
+geographic, climatic, and agricultural characteristics of these two regions
+provide an ideal testbed for the mathematical foundations of FusionCropNet V6.
+
+\subsection{Northeast China Plain (东北平原)}
+
+\subsubsection{Geographic Setting}
+
+The Northeast Plain extends across Heilongjiang, Jilin, and Liaoning provinces,
+covering approximately 350,000 km$^2$. It is bounded by the Greater Khingan
+Range (大兴安岭) to the west, the Lesser Khingan Range (小兴安岭) to the north,
+and the Changbai Mountains (长白山) to the southeast. The central plain is
+exceptionally flat, with slopes predominantly below $1^\circ$, making it one of
+the most mechanized agricultural regions in China.
+
+\begin{table}[h]
+\centering
+\caption{Northeast Plain: geographic and climatic profile}
+\begin{tabular}{lcl}
+\toprule
+\textbf{Characteristic} & \textbf{Value} & \textbf{Agricultural Significance} \\
+\midrule
+Latitude & $43^\circ$--$48^\circ$N & Cool-temperate, single cropping \\
+Elevation & 50--200m & Minimal terrain correction needed \\
+Mean annual temp. & $0^\circ$--$6^\circ$C & Frost-free period 100--160 days \\
+Annual precipitation & 400--700mm & Rain-fed agriculture dominant \\
+Growing season & May--September & $\sim$150 days, one crop per year \\
+Dominant soil & Black soil (Mollisols) & High organic matter (3--6\%), dark spectral signature \\
+Field size & 5--50 ha & Large contiguous fields, low edge density \\
+Slope & $<1^\circ$ (central plain) & Nearly ideal flat-terrain assumption \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Cropping System}
+
+The Northeast Plain practices \textbf{single cropping} (一年一熟) due to the
+short frost-free period. The dominant crops are:
+
+\begin{enumerate}[nosep]
+    \item \textbf{Spring corn (春玉米):} Planted late April--early May (DOY 110--130),
+    harvested late September--early October (DOY 270--290). Accounts for $\sim$40\%
+    of China's corn production.
+    \item \textbf{Soybean (大豆):} Planted early May (DOY 120--140), harvested late
+    September (DOY 260--280). Rotation with corn for nitrogen fixation.
+    \item \textbf{Single-cropping rice (单季稻):} Planted mid-May (DOY 130--150),
+    harvested late September (DOY 260--280). Concentrated in river valleys with
+    irrigation access.
+\end{enumerate}
+
+The critical phenological distinction for remote sensing: corn, soybean, and
+rice all reach peak NDVI in July--August (DOY 190--240), creating a temporal
+classification challenge that the V6 TemporalLite module addresses through
+its 3-kernel convolution window covering the critical $\sim$1.5-month
+discrimination period.
+
+\subsubsection{Geometric Challenge: Black Soil Spectral Confusion}
+
+The Mollisol (black soil) background presents a unique spectral challenge.
+Its high organic matter content (3--6\%) produces reflectance values
+significantly lower than the mineral soils of the North China Plain across
+all optical bands:
+
+\begin{equation}
+    \rho_{\text{black soil}}(\lambda) \approx 0.6 \cdot \rho_{\text{mineral soil}}(\lambda),
+    \quad \lambda \in [400, 2500]\text{nm}
+\end{equation}
+
+This systematic bias means that an optical classifier trained on the North China
+Plain will systematically \textit{underestimate} vegetation vigor in the Northeast
+Plain due to darker soil background. The \textbf{DomainAdapter (Module 2)} directly
+addresses this cross-region distribution shift: the SGW barycentric mapping
+transports source-domain feature distributions (trained on mineral soils) to
+target-domain distributions (black soils), without requiring labeled samples
+in the target region.
+
+Furthermore, the \textbf{geometric invariants (Module 1)} are invariant to soil
+color — Gaussian curvature $K$ and mean curvature $H$ depend only on surface
+geometry, not spectral reflectance. This makes DEM-derived features a
+\textit{spectrally independent} anchor for cross-region classification, providing
+a stable reference when optical features are systematically biased.
+
+\subsubsection{Cloud Cover and SAR Necessity}
+
+The Northeast Plain experiences significant cloud cover during the critical
+July--August growing period (60--70\% cloud frequency from MODIS climatology).
+This necessitates heavy reliance on Sentinel-1 SAR for temporal continuity.
+
+The \textbf{topological conflict detector (Module 3)} is particularly valuable
+here: when optical data is cloud-contaminated, the cohomological conflict
+$[\omega_{\text{opt}} \smile \omega_{\text{SAR}}]$ becomes non-trivial,
+triggering persistent homology correction that recovers robust consensus
+evidence from SAR-dominant observations while appropriately down-weighting
+degraded optical evidence.
+
+\subsection{North China Plain (华北平原)}
+
+\subsubsection{Geographic Setting}
+
+The North China Plain extends across Hebei, Shandong, Henan, northern Anhui,
+and northern Jiangsu provinces, covering approximately 310,000 km$^2$. It is
+an alluvial plain formed by the Yellow River (黄河), Huai River (淮河), and
+Hai River (海河) systems. The terrain is predominantly flat ($<1^\circ$ slope)
+with local micro-relief variations of 1--5m from ancient river channels and
+alluvial fans.
+
+\begin{table}[h]
+\centering
+\caption{North China Plain: geographic and climatic profile}
+\begin{tabular}{lcl}
+\toprule
+\textbf{Characteristic} & \textbf{Value} & \textbf{Agricultural Significance} \\
+\midrule
+Latitude & $32^\circ$--$40^\circ$N & Warm-temperate, double cropping \\
+Elevation & 0--100m & Coastal to inland gradient \\
+Mean annual temp. & $10^\circ$--$15^\circ$C & Frost-free period 190--220 days \\
+Annual precipitation & 500--900mm & Strong east-west gradient \\
+Growing season & March--November & $\sim$240 days, two crops per year \\
+Dominant soil & Alluvial (Inceptisols) & High fertility, variable texture \\
+Field size & 1--10 ha & Fragmented landholdings, high edge density \\
+Irrigation & Extensive (groundwater) & Over-extraction concerns \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Double Cropping System}
+
+The North China Plain practices \textbf{double cropping} (一年两熟), creating
+a fundamentally different temporal signature from the Northeast Plain:
+
+\begin{enumerate}[nosep]
+    \item \textbf{Winter wheat (冬小麦):} Planted early October (DOY 275--290),
+    dormant December--February (vernalization), green-up March (DOY 60--80),
+    harvested early June (DOY 150--165). The winter NDVI minimum distinguishes
+    wheat from all other crops.
+
+    \item \textbf{Summer corn (夏玉米):} Planted mid-June immediately after wheat
+    harvest (DOY 165--175), harvested late September (DOY 265--275). The rapid
+    growth phase (V6--VT stages) occurs in July, coinciding with peak rainfall.
+
+    \item \textbf{Cotton (棉花):} Planted mid-April (DOY 100--115), harvested
+    October--November (DOY 280--320). Longer growing season, distinct spectral
+    signature during boll opening.
+\end{enumerate}
+
+\subsubsection{Temporal Challenge: Double-Cropping Temporal Overlap}
+
+The winter wheat--summer corn rotation creates a unique temporal challenge:
+in June (DOY 155--175), wheat senescence (decreasing NDVI) temporally overlaps
+with corn emergence (increasing NDVI). A single pixel can contain both signals
+within a 15-day Sentinel-2 composite, creating spectral mixing that no
+single-temporal classifier can resolve.
+
+The \textbf{TemporalLite (Module 4)} directly addresses this: its 3-kernel
+depthwise convolution ($k=3$ covering $\sim$45 days) captures the
+senescence-to-emergence transition as a single temporal pattern rather than
+two conflicting snapshots. The temporal generalization bound
+(Eq.~\ref{eq:gen-bound}) guarantees that even with $T_{\text{eff}} < T$
+(due to autocorrelation during the stable growing period), the model maintains
+bounded generalization error.
+
+\subsubsection{Micro-Relief and Field Boundary Detection}
+
+Although the North China Plain is macroscopically flat, ancient Yellow River
+channels create subtle elevation variations of 1--5m over distances of
+50--200m. These micro-topographic features serve as natural field boundaries
+and drainage divides.
+
+The \textbf{Boundary Detection auxiliary head} in V6 exploits these subtle
+DEM gradients: the geometric invariant $\tau_g$ (geodesic torsion) is
+particularly sensitive to local surface inflection points, detecting field
+boundaries with higher precision than simple Sobel gradient thresholding.
+On the North China Plain, where field boundaries often follow micro-relief
+rather than visible markers, this geometric boundary detection provides a
+critical spatial prior.
+
+\subsection{Cross-Region Comparison and Model Implications}
+
+\begin{table}[h]
+\centering
+\caption{Contrasting characteristics and V6 module implications}
+\begin{tabular}{p{2.8cm}ccp{4.5cm}}
+\toprule
+\textbf{Characteristic} & \textbf{Northeast} & \textbf{N. China} & \textbf{V6 Module Implication} \\
+\midrule
+Cropping intensity & Single & Double & \textbf{M4 (TemporalLite):}
+$k$=3 captures both patterns; $T_{\text{eff}}$ adjusts automatically \\
+Soil background & Dark (Mollisols) & Light (Inceptisols) & \textbf{M2 (DomainAdapter):}
+SGW alignment corrects cross-region spectral bias \\
+Cloud frequency & High (60--70\%) & Moderate (40--50\%) & \textbf{M3 (Conflict):}
+SAR reliance triggers conflict detection; persistent correction recovers consensus \\
+Field size & Large (5--50 ha) & Small (1--10 ha) & \textbf{M1 (Boundary):}
+$\tau_g$ detects micro-relief boundaries at small fields \\
+Terrain variation & Flat ($<1^\circ$) & Flat + micro-relief & \textbf{M1 (Geometric):}
+$K\approx0$, but $\tau_g \neq 0$ captures subtle drainage patterns \\
+Elevation range & 50--200m & 0--100m & \textbf{M1 (Temporal FiLM):}
+Elevation-phenology correction minor but detectable \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Climate-Driven Spectral Dynamics}
+
+\subsubsection{Precipitation Gradient and Vegetation Index Modulation}
+
+The North China Plain exhibits a strong east-west precipitation gradient
+(900mm at the coast to 500mm at the piedmont). This gradient directly modulates
+NDVI temporal profiles through water availability:
+
+\begin{equation}
+    \text{NDVI}_{\max} = \text{NDVI}_{\text{potential}} \cdot
+    \left(1 - \exp\left(-\kappa \cdot \frac{P - P_{\min}}{P_{\max} - P_{\min}}\right)\right)
+\end{equation}
+where $P$ is growing-season precipitation and $\kappa \approx 2.5$ is an
+empirical water-use efficiency coefficient calibrated from MODIS NDVI
+climatology.
+
+The \textbf{DomainAdapter's running statistics} (Module 2, Section 2.4) track
+this precipitation-driven spectral shift during training, enabling the OT
+transport plan to adapt continuously rather than requiring separate models for
+each precipitation regime.
+
+\subsubsection{Temperature and Phenological Timing}
+
+The latitudinal temperature gradient between the two study regions
+($\sim$6$^\circ$C mean annual difference) produces systematic phenological
+offsets:
+
+\begin{equation}
+    \Delta \text{DOY}_{\text{phenology}} = \frac{\Delta T_{\text{mean}} \cdot
+    \text{GDD}_{\text{required}}}{T_{\text{mean}} - T_{\text{base}}}
+\end{equation}
+
+For corn (GDD$_{\text{required}} \approx 1500^\circ$C$\cdot$d, $T_{\text{base}} = 10^\circ$C),
+a $6^\circ$C mean temperature difference produces approximately a 15--20 day
+phenological shift between the two regions. The \textbf{Fourier DOY Encoding}
+in TemporalLite captures this shift as a phase offset in the sinusoidal
+representation, while the $T_{\text{eff}}$ estimate from Module 4 accounts for
+the increased temporal variance.
+
+\subsection{Expected Model Performance by Region}
+
+Based on the geographic analysis above, we formulate testable predictions for
+V6 model performance:
+
+\begin{table}[h]
+\centering
+\caption{Hypothesized relative model performance by region and module}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Scenario} & \textbf{Baseline} & \textbf{+Module 1} & \textbf{+Module 2} & \textbf{+All Modules} \\
+\midrule
+Northeast, corn (large fields) & 78\% & 81\% (K discriminates) & 83\% (soil adapted) & \textbf{86\%} \\
+Northeast, soybean (dark soil) & 72\% & 76\% ($\tau_g$ boundaries) & 80\% (SGW aligned) & \textbf{83\%} \\
+N. China, wheat (winter signal) & 75\% & 77\% (minimal terrain) & 79\% (precip adapted) & \textbf{84\%} \\
+N. China, corn (double-crop) & 70\% & 73\% (micro-relief) & 75\% & \textbf{82\%} \\
+Cross-region (NE$\to$NC) & 58\% & 65\% (SE(3) invariant) & 72\% (OT transported) & \textbf{78\%} \\
+Cross-region (NC$\to$NE) & 55\% & 63\% (SE(3) invariant) & 70\% (OT transported) & \textbf{76\%} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The largest expected gains are in cross-region transfer scenarios (NE$\to$NC
+and NC$\to$NE), where the SE(3)-invariant geometric features (Module 1) and
+SGW domain adaptation (Module 2) provide complementary mechanisms for
+overcoming distribution shift. The all-module configuration is predicted to
+reduce the cross-region performance gap from $\sim$23\% (baseline) to
+$\sim$2--4\%.
+
+\subsection{Remote Sensing Data Specifications}
+
+\subsubsection{Satellite Platforms and Sensors}
+
+\begin{table}[h]
+\centering
+\caption{Remote sensing data sources}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Sensor} & \textbf{Platform} & \textbf{Bands} & \textbf{Resolution} & \textbf{Revisit} \\
+\midrule
+\multicolumn{5}{c}{\textit{Optical}} \\
+MSI & Sentinel-2A/B & 13 (VIS+NIR+SWIR) & 10m/20m & 5 days \\
+OLI & Landsat 8/9 & 11 (VIS+NIR+SWIR+TIRS) & 30m & 16 days \\
+\multicolumn{5}{c}{\textit{SAR (C-band)}} \\
+C-SAR & Sentinel-1A/B & VV+VH (IW mode) & 10m & 6--12 days \\
+\multicolumn{5}{c}{\textit{DEM}} \\
+--- & SRTM v3 & 1 (elevation) & 30m & static \\
+--- & ALOS AW3D30 & 1 (elevation) & 30m & static \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Spectral Band Utilization}
+
+The 10 optical channels input to V6 are:
+\begin{enumerate}[nosep]
+    \item Blue (B2, 490nm) — atmospheric correction reference, sensitive to
+    aerosol loading differences between the two study regions
+    \item Green (B3, 560nm) — vegetation vigor; discriminates corn (deep green)
+    from soybean (lighter green) during peak growing season
+    \item Red (B4, 665nm) — chlorophyll absorption maximum; winter wheat
+    senescence detection in June
+    \item Red Edge 1--3 (B5/B6/B7, 705/740/783nm) — critical for crop type
+    discrimination at peak biomass when NDVI saturates
+    \item NIR (B8, 842nm) — canopy structure; LAI estimation via NDVI
+    \item Narrow NIR (B8A, 865nm) — water content; irrigation status in
+    the North China Plain
+    \item SWIR 1 (B11, 1610nm) — lignin/cellulose; crop residue detection
+    after harvest
+    \item SWIR 2 (B12, 2190nm) — soil mineral composition; discriminates
+    black soil (Northeast) from alluvial soil (North China)
+\end{enumerate}
+
+\subsubsection{SAR Backscatter Characteristics}
+
+The 5 SAR input channels are:
+\begin{enumerate}[nosep]
+    \item VV polarization (dB) — surface scattering; soil moisture after
+    rainfall/irrigation events
+    \item VH polarization (dB) — volume scattering; canopy structure
+    development during vegetative growth
+    \item VV/VH ratio — depolarization indicator; discriminates broadleaf
+    crops (soybean, cotton) from narrow-leaf crops (wheat, corn)
+    \item RVI (Radar Vegetation Index) — $4\sigma_{\text{VH}}/(\sigma_{\text{VV}} +
+    \sigma_{\text{VH}})$; robust vegetation proxy in cloudy conditions
+    \item Temporal coherence — interferometric stability; detects field
+    operations (tillage, harvest) as coherence drops
+\end{enumerate}
+
+In the Northeast Plain, SAR is essential during the July--August cloudy period
+when optical data is unreliable. In the North China Plain, SAR provides
+critical observations during the June wheat harvest--corn planting transition,
+when rapid field changes occur within a single Sentinel-2 revisit interval.
+% (end of SAR characteristics section)

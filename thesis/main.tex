@@ -1,0 +1,83 @@
+% ===========================================================================
+% FusionCropNet V6: A Multi-Modal Remote Sensing Crop Classification Framework
+% with Differential Geometry, Optimal Transport, Algebraic Topology, and
+% Statistical Learning Theory Foundations
+%
+% Doctoral Dissertation / Master's Thesis
+% Wuhan University — School of Remote Sensing and Information Engineering
+% ===========================================================================
+
+\documentclass[12pt,a4paper]{article}
+
+% ── Packages ──────────────────────────────────────────────────────────────
+\usepackage[UTF8]{ctex}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx,subfig}
+\usepackage{booktabs,multirow,array,longtable}
+\usepackage{algorithm,algorithmicx,algpseudocode}
+\usepackage{hyperref,cleveref}
+\usepackage{geometry}
+\usepackage{tikz,pgfplots}
+\usepackage{enumitem}
+\pgfplotsset{compat=1.18}
+\usetikzlibrary{arrows,shapes,positioning,fit,backgrounds,calc}
+
+\geometry{margin=2.5cm}
+
+% ── Theorem Environments ──────────────────────────────────────────────────
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{definition}[theorem]{Definition}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+% ── Algorithm settings ────────────────────────────────────────────────────
+\floatname{algorithm}{Algorithm}
+\renewcommand{\listalgorithmname}{List of Algorithms}
+
+% ── Title ─────────────────────────────────────────────────────────────────
+\title{\textbf{FusionCropNet V6}\\[6pt]
+       \large A Multi-Modal Crop Classification Framework with\\
+       Rigorous Mathematical Foundations}
+\author{浩轩 \and 天明 \and 子涵 \and 志远 \and 晓彤\\
+        {\small School of Remote Sensing and Information Engineering}\\
+        {\small Wuhan University, Wuhan 430079, China}}
+\date{June 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\input{chapters/00-abstract}
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+% ═══════════════════════════════════════════════════════════════════════════
+\input{chapters/01-introduction}
+\input{chapters/02-math-foundations}
+\input{chapters/02b-cross-module-bridges}
+\input{chapters/03-v6-architecture}
+\input{chapters/03b-geographic-analysis}
+\input{chapters/03c-geo-math-modeling}
+\input{chapters/04-experiments}
+\input{chapters/05-conclusion}
+\input{chapters/06-acknowledgments}
+
+% ── Visualizations ──────────────────────────────────────────────────────
+\newpage
+\section{Mathematical and Architectural Visualizations}
+\input{chapters/figures-tikz}
+
+% ── Appendix ──────────────────────────────────────────────────────────────
+\appendix
+\input{chapters/appendix}
+
+% ── References ────────────────────────────────────────────────────────────
+\bibliographystyle{unsrt}
+\bibliography{references}
+
+\end{document}

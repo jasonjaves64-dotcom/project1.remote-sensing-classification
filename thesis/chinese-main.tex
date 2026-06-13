@@ -1,0 +1,246 @@
+
+% Chinese version of FusionCropNet V6 thesis
+% Compile with: xelatex chinese-main.tex
+\documentclass[12pt,a4paper]{ctexart}
+
+% Packages
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx,subfig}
+\usepackage{booktabs,multirow,array,longtable}
+\usepackage{algorithm,algorithmicx,algpseudocode}
+\usepackage{hyperref,cleveref}
+\usepackage{geometry}
+\usepackage{tikz,pgfplots}
+\usepackage{enumitem}
+\pgfplotsset{compat=1.18}
+\usetikzlibrary{arrows,shapes,positioning,fit,backgrounds,calc}
+
+\geometry{margin=2.5cm}
+
+% Theorem environments (shared with English version)
+\newtheorem{theorem}{定理}[section]
+\newtheorem{lemma}[theorem]{引理}
+\newtheorem{corollary}[theorem]{推论}
+\newtheorem{proposition}[theorem]{命题}
+\newtheorem{definition}[theorem]{定义}
+
+% Algorithm settings (chinese)
+\floatname{algorithm}{算法}
+\renewcommand{\listalgorithmname}{算法列表}
+\renewcommand{\algorithmicrequire}{\textbf{输入:}}
+\renewcommand{\algorithmicensure}{\textbf{输出:}}
+
+% Title (Chinese)
+\title{\textbf{FusionCropNet V6}\\[8pt]
+       \large 具有严格数学基础的\\多模态遥感作物分类框架}
+\author{浩轩 \quad 天明 \quad 子涵 \quad 志远 \quad 晓彤\\
+        {\small 遥感信息工程学院}\\
+        {\small 武汉大学，武汉 430079，中国}}
+\date{2026年6月}
+
+\begin{document}
+\maketitle
+
+% Chinese Abstract
+\begin{abstract}
+\noindent
+遥感作物分类面临四个根本性的数学挑战：（1）地形引起的光谱畸变需要对数字高程模型进行微分几何处理；（2）源农业区域与目标农业区域之间的跨域分布偏移需要最优传输理论；（3）光学、SAR和DEM传感器之间的多模态证据冲突需要代数拓扑进行解析；（4）时序序列的泛化需要统计学习理论保证。
+
+我们提出\textbf{FusionCropNet V6}，一种层次化多尺度多任务架构，通过严格的数学基础应对上述四个挑战：
+
+\textbf{模块1 — 微分几何：}我们用SIREN隐式曲面表示替代了标准的基于CNN的DEM编码器，通过活动标架法提取五个闭式几何不变量（高斯曲率$K$、平均曲率$H$、主曲率$\kappa_1,\kappa_2$、测地挠率$\tau_g$）。这些不变量具有SE(3)-不变性（定理1，偏差$<2.3\times10^{-6}$），无需基于autograd的导数计算，实现了$52\times$加速和$-95\%$显存降低。
+
+\textbf{模块2 — 最优传输：}我们将跨模态对齐形式化为切片Gromov-Wasserstein距离与Grassmann流形测地线距离的联合优化，通过具有闭式V子问题和已证明线性收敛性的Stiefel ADMM算法求解（定理4）。SE(3)-不变的几何特征作为锚点特征，将跨区域对齐误差降低了4个数量级。
+
+\textbf{模块3 — 代数拓扑：}我们证明了Dempster-Shafer证据组合规则与单纯上链复形上的cup积严格等价（定理1：DS-Cup积等价），揭示了模态间冲突是同调阻碍（定理2）。我们引入了三类冲突分类器（噪声/结构/高阶），配合持久同调修正，将ECE从0.341降至0.042，结构冲突恢复率达89\%。
+
+\textbf{模块4 — 统计学习理论：}我们证明了动态卷积算子等价于核空间低秩线性注意力（定理1），并在几何$\beta$-混合条件下导出了时序Rademacher泛化界（定理2），提供闭式超参数建议（$M^*, r^*, \lambda^*$），与穷举网格搜索最优值的偏差$<0.8\%$。
+
+V6架构通过默认激活的14个组件实现所有四个模块，包括5路径DEM注入、3尺度跨模态注意力、TemporalLite（相比Transformer约$48\times$加速），以及多任务伪标签学习。谱平衡初始化消除了warmup依赖。全部10个核心定理已在Lean 4中形式化验证。
+
+\vspace{6pt}
+\noindent\textbf{关键词：}作物分类，遥感，微分几何，最优传输，代数拓扑，统计学习理论，Dempster-Shafer证据理论，SIREN，Gromov-Wasserstein距离，持久同调
+\end{abstract}
+
+% English Abstract (reproduced for bilingual completeness)
+\begin{center}
+\large\textbf{Abstract}
+\end{center}
+\noindent
+Remote sensing crop classification faces four fundamental mathematical challenges:
+(1) terrain-induced spectral distortion requiring differential geometric treatment of
+Digital Elevation Models, (2) cross-domain distribution shift between source and
+target agricultural regions requiring optimal transport theory, (3) multi-modal
+evidence conflict between optical, SAR, and DEM sensors requiring algebraic topology
+for resolution, and (4) temporal sequence generalization requiring statistical
+learning theory guarantees.
+
+We present \textbf{FusionCropNet V6}, a hierarchical multi-scale multi-task architecture
+that addresses all four challenges through rigorous mathematical foundations:
+Module 1 (Differential Geometry) — SIREN implicit surface representation with five
+closed-form SE(3)-invariant geometric invariants ($52\times$ speedup, $-95\%$ VRAM);
+Module 2 (Optimal Transport) — Joint SGW+Grassmann alignment via Stiefel ADMM
+($128\times$ faster, $10^4\times$ error reduction); Module 3 (Algebraic Topology) —
+DS-Cup Product Equivalence Theorem with three-way conflict classification
+(ECE $0.341\to0.042$, 89\% structural recovery); Module 4 (Statistical Learning) —
+Temporal Rademacher bound with closed-form hyperparameters ($<0.8\%$ from optimum).
+All 10 theorems verified in Lean 4.
+
+\vspace{4pt}
+\noindent\textbf{Keywords:} crop classification, remote sensing, differential geometry,
+optimal transport, algebraic topology, statistical learning theory,
+Dempster-Shafer, SIREN, Gromov-Wasserstein, persistent homology
+
+\newpage
+\tableofcontents
+\newpage
+
+% ═══════════════════════════════════════════════════════════════════════
+% 第1章: 引言
+% ═══════════════════════════════════════════════════════════════════════
+\section{引言}
+
+\subsection{研究动机}
+
+基于卫星影像的精确作物分类对于粮食安全监测、农业补贴核查和气候影响评估至关重要。现代遥感平台提供多模态观测：光学影像（Landsat 8/9、Sentinel-2）、合成孔径雷达（Sentinel-1）和数字高程模型（SRTM、ALOS）。每种模态捕获互补信息：光学反射率揭示植被光谱特征，SAR后向散射穿透云层并感知冠层结构，DEM提供调制两者的地形背景。
+
+然而，融合这些模态面临四个现有深度学习方法未能充分解决的根本性数学挑战：
+
+\begin{enumerate}
+    \item \textbf{地形几何：}DEM特征通常由标准CNN编码为隐式的128维向量，缺乏几何语义。跨区域泛化失败是因为CNN特征缺乏SE(3)-不变性，且基于autograd的二阶导数计算导致计算图爆炸（$1024^2$、5通道耗时4.7秒，占用12.4GB显存）。
+
+    \item \textbf{跨域对齐：}源域（ImageNet/SeCo预训练）和目标域（特定作物区域）存在分布偏移，简单的逐通道仿射变换无法捕获。标准Gromov-Wasserstein距离计算复杂度为$O(N^3)$，每次批量的域自适应不可行。
+
+    \item \textbf{多模态证据冲突：}当光学、SAR和DEM模态不一致时（如光学判断为"小麦"而SAR判断为"水稻"），标准Dempster-Shafer组合可能产生Zadeh悖论（高置信度错误答案）。标量vacuity无法区分随机噪声与结构性语义矛盾。
+
+    \item \textbf{时序泛化：}动态卷积层在实践中有效但缺乏严格的数学依据，导致架构设计和超参数选择依赖昂贵的网格搜索（$\sim$12小时）。
+\end{enumerate}
+
+\subsection{贡献}
+
+本工作做出以下贡献：
+
+\begin{enumerate}
+    \item \textbf{微分几何DEM编码（模块1）：}用SIREN隐式曲面拟合和活动标架法闭式计算五个几何不变量替代基于CNN的DEM编码，证明SE(3)-不变性（定理1）和等距不变性（定理2）。
+
+    \item \textbf{联合最优传输-Grassmann对齐（模块2）：}将跨模态特征对齐形式化为切片Gromov-Wasserstein距离与Grassmann测地距离的统一优化，通过Stiefel ADMM（闭式V子问题，定理4）和线性收敛保证求解。
+
+    \item \textbf{拓扑证据融合（模块3）：}证明DS-Cup积等价定理，建立Dempster-Shafer组合与单纯上链复形cup积的严格等价。证明模态间冲突是同调阻碍（定理2），引入配合持久同调修正的三类冲突分类。
+
+    \item \textbf{统计学习保证（模块4）：}证明动态卷积算子等价于核空间低秩线性注意力（定理1），在几何$\beta$-混合条件下导出时序Rademacher泛化界（定理2），得到闭式最优超参数。
+
+    \item \textbf{FusionCropNet V6架构：}一个集成模型，14个组件实现全部四个数学模块，313个通过测试，48.9M参数，支持CPU训练。
+\end{enumerate}
+
+\subsection{相关工作}
+
+略。详见英文原版第1.3节。
+
+\subsection{论文组织}
+
+第2节介绍四个数学理论模块及其完整的定理陈述、证明和跨模块协同推导。第3节描述V6架构，含前向传播伪代码和统一损失函数。第3B节提供地理和遥感背景。第4节报告实验验证与训练协议。第5节总结局限性和未来工作。附录包含代码清单和Lean 4形式化细节。
+
+\newpage
+
+% ═══════════════════════════════════════════════════════════════════════
+% 第2章: 数学基础（英文原文保留，保持数学一致性）
+% ═══════════════════════════════════════════════════════════════════════
+\section{数学基础（Mathematical Foundations）}
+
+\textit{以下为英文原文，保留数学符号和证明的精确性。中文关键表述见各子节标题。}
+
+\input{chapters/02-math-foundations}
+\input{chapters/02b-cross-module-bridges}
+
+\newpage
+
+% ═══════════════════════════════════════════════════════════════════════
+% 第3章: V6架构（英文原文，关键概念中英对照）
+% ═══════════════════════════════════════════════════════════════════════
+\section{FusionCropNet V6 架构}
+
+\input{chapters/03-v6-architecture}
+\input{chapters/03b-geographic-analysis}
+\input{chapters/03c-geo-math-modeling}
+
+\newpage
+
+% ═══════════════════════════════════════════════════════════════════════
+% 第4章: 实验验证
+% ═══════════════════════════════════════════════════════════════════════
+\section{实验验证（Experimental Validation）}
+
+\input{chapters/04-experiments}
+
+\newpage
+
+% ═══════════════════════════════════════════════════════════════════════
+% 第5章: 结论（中文） + 英文原版
+% ═══════════════════════════════════════════════════════════════════════
+\section{结论与展望}
+
+\subsection{总结}
+
+本文提出了FusionCropNet V6——一种层次化多尺度多任务遥感作物分类框架，以四个数学理论模块为基础：
+
+\begin{enumerate}
+    \item \textbf{微分几何（模块1）：}基于SIREN的DEM编码，提取五个闭式SE(3)-不变几何特征（$K, H, \kappa_1, \kappa_2, \tau_g$），实现$52\times$加速和$-95\%$显存降低。
+
+    \item \textbf{最优传输（模块2）：}联合Sliced Gromov-Wasserstein + Grassmann对齐，通过Stiefel ADMM实现$128\times$加速和4个数量级的跨区域对齐误差降低。
+
+    \item \textbf{代数拓扑（模块3）：}DS-Cup积等价定理，三类冲突分类（噪声/结构/高阶），配合持久同调修正，ECE降低87.7\%，89\%结构冲突恢复。
+
+    \item \textbf{统计学习理论（模块4）：}动态卷积-核注意力等价定理，时序Rademacher泛化界，闭式超参数（偏差$<0.8\%$），谱平衡初始化消除warmup（$+42\%$收敛加速）。
+\end{enumerate}
+
+V6架构通过14个组件实现全部四个模块：5路径DEM注入、3尺度跨模态注意力、TemporalLite（约$48\times$时序编码加速）、多任务伪标签学习（5个任务头）、Vacuity自训练（拓扑伪标签筛选）和3-Expert LateFusion（缺模态自动鲁棒）。
+
+\subsection{已知局限性}
+
+\begin{enumerate}
+    \item \textbf{合成数据偏差：}当前验证基于合成数据，mIoU绝对值需在真实数据上重新校准。
+    \item \textbf{伪标签质量：}从NDVI/DOY/DEM派生的LAI、生长阶段和田块边界伪标签存在系统性误差（约15--20\%）。
+    \item \textbf{CPU训练上限：}P2/P3阶段需要GPU进行大规模自监督预训练和ViT基础模型集成。
+    \item \textbf{跨区域泛化：}理论保证（模块2的OT-Grassmann对齐、模块1的SE(3)-不变性）暗示了泛化能力，但尚未在多个农业生态区进行严格验证。
+    \item \textbf{拓扑计算开销：}持久同调计算约为每批次0.1--0.3秒；P3步骤后的实时推理在P1/P2阶段不是瓶颈。
+\end{enumerate}
+
+\subsection{未来工作}
+
+\begin{enumerate}
+    \item \textbf{真实数据验证：}在东北平原和华北平原的真实Sentinel-1/2数据上进行实验，使用当地农业部门的实地真值标签。
+    \item \textbf{TerraFM/DOFA集成（P3）：}将SeCo ResNet骨干替换为TerraFM ViT + LoRA适配器，利用多模态遥感基础模型。
+    \item \textbf{主动学习管线：}将拓扑不确定性（vacuity + 同调冲突）用于标注优先级排序，最大化标注效率。
+    \item \textbf{物候集成预测：}将生长阶段和LAI辅助输出用于下游物候建模（播种日期预测、产量估计）。
+    \item \textbf{实时ArcGIS部署：}将V6的伪标签和不确定性输出集成到ArcGIS Pro中，用于交互式作物制图工作流。
+\end{enumerate}
+
+\newpage
+
+% ═══════════════════════════════════════════════════════════════════════
+% 英文原版结论（为完整性保留）
+% ═══════════════════════════════════════════════════════════════════════
+\input{chapters/05-conclusion}
+
+\input{chapters/06-acknowledgments}
+
+% ═══════════════════════════════════════════════════════════════════════
+% 可视化图集
+% ═══════════════════════════════════════════════════════════════════════
+\newpage
+\section{数学与架构可视化（Mathematical and Architectural Visualizations）}
+\input{chapters/figures-tikz}
+
+% ═══════════════════════════════════════════════════════════════════════
+% 附录
+% ═══════════════════════════════════════════════════════════════════════
+\appendix
+\input{chapters/appendix}
+
+% ═══════════════════════════════════════════════════════════════════════
+% 参考文献
+% ═══════════════════════════════════════════════════════════════════════
+\bibliographystyle{unsrt}
+\bibliography{references}
+
+\end{document}

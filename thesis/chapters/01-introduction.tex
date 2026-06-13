@@ -1,0 +1,155 @@
+% ===========================================================================
+% Chapter 1: Introduction
+% ===========================================================================
+\section{Introduction}
+
+\subsection{Motivation}
+
+Accurate crop classification from satellite imagery is fundamental to food security
+monitoring, agricultural subsidy verification, and climate impact assessment.
+Modern remote sensing platforms provide multi-modal observations: optical imagery
+(Landsat 8/9, Sentinel-2), Synthetic Aperture Radar (Sentinel-1), and Digital
+Elevation Models (SRTM, ALOS). Each modality captures complementary information:
+optical reflectance reveals vegetation spectral signatures, SAR backscatter
+penetrates cloud cover and senses canopy structure, and DEM provides topographic
+context that modulates both.
+
+However, fusing these modalities presents four fundamental mathematical
+challenges that have not been adequately addressed by existing deep learning
+approaches:
+
+\begin{enumerate}
+    \item \textbf{Terrain Geometry:} DEM features are typically encoded by standard
+    CNNs as implicit $128$-dimensional vectors with no geometric semantics.
+    Cross-region generalization fails because CNN features lack SE(3)-invariance,
+    and autograd-based second-derivative computation causes computational graph
+    explosion ($4.7$s, $12.4$GB VRAM for $1024^2$ at $5$ channels).
+
+    \item \textbf{Cross-Domain Alignment:} Source domain (ImageNet/SeCo pre-training)
+    and target domain (specific crop regions) exhibit distribution shift that
+    simple channel-wise affine transformations cannot capture. Standard
+    Gromov-Wasserstein distance computation is $O(N^3)$, prohibitive for
+    per-batch domain adaptation.
+
+    \item \textbf{Multi-Modal Evidence Conflict:} When optical, SAR, and DEM
+    modalities disagree (e.g., optical says ``wheat'' while SAR says ``rice''),
+    standard Dempster-Shafer combination can produce the Zadeh paradox
+    (high-confidence wrong answer). Scalar vacuity cannot distinguish random
+    noise from structural semantic contradiction.
+
+    \item \textbf{Temporal Generalization:} Dynamic convolution layers are
+    empirically effective but lack rigorous mathematical justification,
+    making architecture design and hyperparameter selection dependent on
+    expensive grid search ($\sim12$ hours).
+\end{enumerate}
+
+\subsection{Contributions}
+
+This work makes the following contributions:
+
+\begin{enumerate}
+    \item \textbf{Differential Geometric DEM Encoding (Module 1):} We replace
+    CNN-based DEM encoding with SIREN implicit surface fitting and closed-form
+    computation of five geometric invariants via the method of moving frames,
+    proving SE(3)-invariance (Theorem 1) and isometry-invariance (Theorem 2).
+
+    \item \textbf{Joint Optimal Transport--Grassmann Alignment (Module 2):} We
+    formulate cross-modal feature alignment as a unified optimization over
+    sliced Gromov-Wasserstein distance and Grassmann geodesic distance, solved
+    via Stiefel ADMM with closed-form V-subproblem (Theorem 4) and linear
+    convergence guarantee.
+
+    \item \textbf{Topological Evidence Fusion (Module 3):} We prove the DS-Cup
+    Product Equivalence Theorem, establishing that Dempster-Shafer combination
+    is strictly equivalent to the cup product on simplicial cochain complexes.
+    We show that conflict between modalities is a cohomological obstruction
+    (Theorem 2) and introduce three-way conflict classification with persistent
+    homology correction.
+
+    \item \textbf{Statistical Learning Guarantees (Module 4):} We prove that
+    dynamic convolution operators are equivalent to kernel-space low-rank linear
+    attention (Theorem 1) and derive temporal Rademacher generalization bounds
+    under geometric mixing conditions (Theorem 2), yielding closed-form optimal
+    hyperparameters.
+
+    \item \textbf{FusionCropNet V6 Architecture:} An integrated model with 14
+    components implementing all four mathematical modules, achieving $313$
+    passing tests, $48.9$M parameters, and CPU-trainability.
+\end{enumerate}
+
+\subsection{Related Work}
+
+\subsubsection{Deep Learning for Crop Classification}
+
+Deep learning has become the dominant paradigm for remote sensing crop
+classification. Early works applied 2D CNNs (ResNet, DenseNet) to single-temporal
+imagery~\cite{zhong2019deep, russwurm2018multi}. The introduction of temporal
+attention mechanisms~\cite{russwurm2020breizhcrops, garnot2020satellite} enabled
+multi-temporal fusion, but these methods treat each pixel independently,
+discarding spatial context. 3D CNNs~\cite{ji2013convolutional} and
+ConvLSTM~\cite{shi2015convolutional} partially address this but at prohibitive
+computational cost for large-area mapping.
+
+The Transformer architecture~\cite{vaswani2017attention} was adapted to remote
+sensing via positional encodings of spatial-temporal coordinates, achieving
+state-of-the-art performance on crop classification benchmarks. However,
+Transformer-based methods suffer from $O(T^2)$ complexity in the temporal
+dimension and lack principled treatment of multi-modal uncertainty.
+
+\subsubsection{Mathematical Foundations in Deep Learning}
+
+\textbf{Differential geometry} has been applied to deep learning primarily
+through manifold learning and geometric deep learning~\cite{bronstein2017geometric}.
+SIREN~\cite{sitzmann2020siren} introduced periodic activation functions for
+implicit neural representations, but its application to DEM encoding and
+closed-form geometric invariant extraction is novel to this work.
+
+\textbf{Optimal transport} has gained traction in domain adaptation through
+Wasserstein distance minimization~\cite{courty2017optimal}. The Gromov-Wasserstein
+distance~\cite{peyre2016gromov} extends OT to metric measure spaces, and sliced
+variants~\cite{bonneel2015sliced} reduce computational complexity. Joint
+OT-subspace alignment on the Grassmann manifold~\cite{edelman1998geometry} is
+a contribution unique to this work.
+
+\textbf{Algebraic topology} has seen limited application in machine learning,
+primarily through persistent homology for data analysis~\cite{carlsson2008topology}
+and topological data analysis (TDA)~\cite{edelsbrunner2008persistent}. The
+connection between Dempster-Shafer theory and cup products on simplicial
+cochain complexes is, to our knowledge, first established in this work.
+
+\textbf{Statistical learning theory} provides generalization guarantees
+through Rademacher complexity~\cite{bartlett2002rademacher} and PAC-Bayesian
+bounds~\cite{mcallester1999pac}. The temporal generalization bound under
+geometric $\beta$-mixing extends these results to non-i.i.d. time series
+data~\cite{mohri2018foundations, kuznetsov2017generalization}.
+
+\subsubsection{Evidential Deep Learning}
+
+EDL~\cite{sensoy2018evidential} models prediction uncertainty through
+Dirichlet distributions, providing vacuity and dissonance estimates.
+Subsequent works extended EDL to classification~\cite{malinin2018predictive}
+and regression tasks. However, existing EDL methods treat vacuity as a scalar,
+failing to capture the \textit{structure} of multi-modal conflict. Our
+topological reformulation addresses this fundamental limitation.
+
+\subsubsection{Multi-Modal Remote Sensing Fusion}
+
+Multi-modal fusion in remote sensing typically employs early fusion
+(concatenation), late fusion (ensemble averaging), or attention-based
+intermediate fusion~\cite{schmitt2020sen12ms}. Self-supervised pre-training
+methods such as SeCo~\cite{manen2022seco} provide remote sensing-specific
+representations but do not address cross-modal alignment geometry.
+FusionCropNet V6 advances beyond these methods by (1) establishing
+mathematical foundations for each fusion mechanism, (2) providing
+SE(3)-invariant geometric features, and (3) detecting structural
+cross-modal conflict through algebraic topology.
+
+\subsection{Paper Organization}
+
+Section 2 presents the four mathematical theory modules with complete formal
+theorem statements, proofs, and cross-module synergy derivations. Section 3
+describes the V6 architecture with forward-propagation pseudocode and the
+unified loss function. Section 3B provides geographic and remote sensing
+context. Section 4 reports experimental validation with training protocols.
+Section 5 concludes with limitations and future work. The Appendix contains
+code listings and Lean 4 formalization details.

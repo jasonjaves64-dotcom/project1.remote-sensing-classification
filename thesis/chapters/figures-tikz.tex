@@ -1,0 +1,494 @@
+% ===========================================================================
+% FusionCropNet V6 — TikZ Figures Collection
+% Mathematical Model Visualizations + Neural Network Interaction Visualizations
+% ===========================================================================
+
+% ══════════════════════════════════════════════════════════════════════════
+% FIGURE M1: SIREN Implicit Surface Fitting Pipeline (Module 1)
+% ══════════════════════════════════════════════════════════════════════════
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[
+    node distance=1.6cm,
+    block/.style={rectangle,draw,minimum width=2.8cm,minimum height=0.7cm,align=center,rounded corners=3pt,font=\small},
+    mathblock/.style={block,fill=blue!8},
+    arrow/.style={thick,->,>=stealth}
+]
+    \node[block] (dem) {DEM Input\\$(B,5,H,W)$};
+    \node[mathblock,below=of dem] (siren) {SIREN Fit\\$u^{l+1} = \sin(\omega_0(W^l u^l + b^l))$\\(3-layer MLP, $\omega_0=30$)};
+    \node[mathblock,below=of siren] (grad) {Closed-Form Gradients\\$\partial_i u_j^l = \omega_0\cos(\phi_j^l)\sum_k W_{jk}^l \partial_i u_k^{l-1}$\\No autograd graph needed};
+    \node[mathblock,below=of grad] (hess) {Closed-Form Hessian\\$\partial_{ij} u_m^l = -\omega_0^2\sin(\phi_m^l)(\partial_i\phi_m^l)(\partial_j\phi_m^l)$\\$+ \omega_0\cos(\phi_m^l)\sum_k W_{mk}^l\partial_{ij}u_k^{l-1}$};
+    \node[mathblock,below=of hess] (frame) {Darboux Moving Frame\\$\mathbf{e}_1=\frac{(1,0,h_x)}{\sqrt{1+h_x^2}},\ \mathbf{n}=\frac{(-h_x,-h_y,1)}{\sqrt{1+h_x^2+h_y^2}}$};
+    \node[mathblock,below=of frame] (invariants) {5 Geometric Invariants\\$K, H, \kappa_1, \kappa_2, \tau_g$};
+    \node[block,below=of invariants,fill=green!8] (output) {Geometric Feature Map\\$(B,5,H,W) \to (B,128,H,W)$\\CNN encoder on invariants};
+    \node[block,right=3.5cm of siren,fill=yellow!10] (speed) {$52\times$ speedup\\$-95\%$ VRAM\\$\epsilon<10^{-7}$ residuals};
+    \node[block,right=3.5cm of frame,fill=red!8] (inv) {SE(3)-Invariance\\deviation $<2.3\times10^{-6}$\\Isometry Invariance ($K$)};
+
+    \draw[arrow] (dem) -- (siren);
+    \draw[arrow] (siren) -- (grad);
+    \draw[arrow] (grad) -- (hess);
+    \draw[arrow] (hess) -- (frame);
+    \draw[arrow] (frame) -- (invariants);
+    \draw[arrow] (invariants) -- (output);
+    \draw[arrow,dashed,gray] (siren.east) -- (speed.west);
+    \draw[arrow,dashed,gray] (frame.east) -- (inv.west);
+\end{tikzpicture}
+\caption{Module 1: SIREN-based DEM encoding pipeline. From raw DEM to SE(3)-invariant geometric features via closed-form derivative computation. All five invariants ($K, H, \kappa_1, \kappa_2, \tau_g$) are extracted without autograd, achieving $52\times$ speedup and $-95\%$ VRAM compared to backpropagation-based approaches.}
+\label{fig:siren-pipeline}
+\end{figure}
+
+% ══════════════════════════════════════════════════════════════════════════
+% FIGURE M2: Optimal Transport + Grassmann Joint Alignment (Module 2)
+% ══════════════════════════════════════════════════════════════════════════
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[
+    node distance=1.4cm,
+    block/.style={rectangle,draw,minimum width=3.0cm,minimum height=0.8cm,align=center,rounded corners=3pt,font=\small},
+    arrow/.style={thick,->,>=stealth},
+    bidir/.style={thick,<->,>=stealth}
+]
+    \node[block,fill=blue!8] (src) {Source Features\\$\mu_s \in \mathcal{P}(\mathbb{R}^d)$\\Optical Encoder Output};
+    \node[block,fill=red!8,right=5cm of src] (tgt) {Target Features\\$\mu_t \in \mathcal{P}(\mathbb{R}^d)$\\SAR Encoder Output};
+
+    \node[block,fill=green!8,below=1.8cm of src,xshift=2.5cm] (sgw) {Sliced GW Distance\\$\widehat{\text{SGW}}_{ub}^L(\mu_s,\mu_t)$\\$O(L\cdot N\log N)$, dim-independent};
+    \node[block,fill=yellow!8,below=of sgw] (grass) {Grassmann Alignment\\$d_G(\mathbf{V}_s,\mathbf{V}_t) = \sqrt{\sum \arccos^2(\sigma_i)}$\\Geodesic distance on Gr$(k,d)$};
+    \node[block,fill=orange!8,below=of grass] (admm) {Stiefel ADMM\\$\min \text{SGW} + \alpha\cdot d_G^2 + \lambda D(\pi\|\mu)$\\Closed-form V-subproblem\\Linear convergence $\gamma<1$};
+    \node[block,fill=purple!8,below=of admm] (result) {Aligned Feature Pair\\$(\tilde{\mu}_s, \tilde{\mu}_t)$\\Distribution + Subspace aligned};
+
+    \draw[arrow] (src.south) -- ++(0,-0.5) -| (sgw.west);
+    \draw[arrow] (tgt.south) -- ++(0,-0.5) -| (sgw.east);
+    \draw[arrow] (sgw) -- (grass);
+    \draw[arrow] (grass) -- (admm);
+    \draw[arrow] (admm) -- (result);
+
+    \node[block,right=2cm of tgt,fill=cyan!10,text width=2.5cm] (perf) {$128\times$ faster\\than standard GW\\ADMM: 28 iters (0.42s)};
+    \draw[arrow,dashed,gray] (sgw.east) -- (sgw.east -| perf.west);
+
+    \node[below=0.5cm of perf,anchor=north,font=\footnotesize,align=center] {Geometric invariants\\serve as anchor features\\$\to 10^4\times$ error reduction};
+\end{tikzpicture}
+\caption{Module 2: Joint Optimal Transport--Grassmann subspace alignment pipeline. Source and target domain features are simultaneously aligned in distribution (via sliced GW) and in subspace geometry (via Grassmann geodesic), solved efficiently through Stiefel ADMM with proven linear convergence. Geometric invariants from Module 1 serve as SE(3)-invariant anchor features.}
+\label{fig:ot-grassmann}
+\end{figure}
+
+% ══════════════════════════════════════════════════════════════════════════
+% FIGURE M3: DS-Cup Product Topology (Module 3)
+% ══════════════════════════════════════════════════════════════════════════
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[
+    node distance=1.3cm,
+    block/.style={rectangle,draw,minimum width=3.2cm,minimum height=0.8cm,align=center,rounded corners=3pt,font=\small},
+    arrow/.style={thick,->,>=stealth}
+]
+    \node[block,fill=blue!8] (edl) {EDL Evidence\\$\boldsymbol{\alpha}_{\text{opt}}, \boldsymbol{\alpha}_{\text{sar}}, \boldsymbol{\alpha}_{\text{fused}}$\\Dirichlet parameters};
+
+    \node[block,fill=green!8,below=of edl] (embed) {Dirichlet-to-Chain Embedding\\$\mathbf{C}_m = \sum m_m(\sigma^p)\cdot\sigma^p \in C_p(K;\mathbb{R})$\\Boundary norm $\|\partial\mathbf{C}_m\| \leftrightarrow$ non-Bayesianity ($r=0.96$)};
+
+    \node[block,fill=red!8,below=of embed] (cup) {DS-Cup Product Equivalence (Thm 1)\\$(\omega_1 \smile \omega_2)(\sigma) = \sum \omega_1(\tau)\omega_2(\sigma\setminus\tau)\delta(\tau,\sigma\setminus\tau)$\\Dempster-Shafer combination $\equiv$ cup product on $C^*(K)$};
+
+    \node[block,fill=orange!8,below=of cup] (conflict) {Conflict Classification (Thm 2)\\$\kappa = (\omega_1\smile\omega_2)(\emptyset)$ cohomological obstruction\\\begin{tabular}{c}Noise: $[\tilde{\omega}]=0, \kappa<\tau_\kappa$\\Structural: $[\tilde{\omega}]\neq 0$\\HighOrder: $H^p(K)\ni[\eta]\neq 0$\end{tabular}};
+
+    \node[block,fill=purple!8,below=of conflict] (persist) {Persistent Homology Correction\\Filtration $\{K_\epsilon\}$ by evidence mass\\$\min_{\omega'}\|\omega'-\omega\|_2$ s.t. $[\omega']\in$Span(long-lived)\\89\% structural conflict recovery};
+    \node[block,fill=cyan!8,below=of persist] (result) {Corrected Evidence\\$\boldsymbol{\alpha}'$ with pruned\\topological contradictions};
+
+    \draw[arrow] (edl) -- (embed);
+    \draw[arrow] (embed) -- (cup);
+    \draw[arrow] (cup) -- (conflict);
+    \draw[arrow] (conflict) -- (persist);
+    \draw[arrow] (persist) -- (result);
+\end{tikzpicture}
+\caption{Module 3: Topological evidence fusion pipeline. EDL evidence is embedded as simplicial chains, with Dempster-Shafer combination proven equivalent to the cup product. Conflict is classified into three categories via cohomology, and persistent homology correction recovers 89\% of structural conflict while preserving topologically robust evidence.}
+\label{fig:ds-topology}
+\end{figure}
+
+% ══════════════════════════════════════════════════════════════════════════
+% FIGURE M4: Temporal Rademacher Generalization (Module 4)
+% ══════════════════════════════════════════════════════════════════════════
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[
+    node distance=1.4cm,
+    block/.style={rectangle,draw,minimum width=3.2cm,minimum height=0.8cm,align=center,rounded corners=3pt,font=\small},
+    arrow/.style={thick,->,>=stealth}
+]
+    \node[block,fill=blue!8] (dyn) {Dynamic Convolution\\$\mathbf{K}_{\text{dyn}} = \sum_i \pi_i(\mathbf{x})\cdot\mathbf{K}_i(\mathbf{x})$\\Output: $(B,T,C_{\text{out}},H,W)$};
+
+    \node[block,fill=green!8,below=of dyn] (equiv) {Kernel-Space Equivalence (Thm 1)\\$\mathbf{K}_{\text{dyn}} \equiv \text{LinearAttn}(\Phi(\mathbf{x}),\mathbf{\Psi},\mathbf{x})$\\Rank-$M$ attention: $O(MKC_{\text{in}}C_{\text{out}})$\\Decoupled from $T$};
+
+    \node[block,fill=yellow!8,below=of equiv] (mixing) {Geometric $\beta$-Mixing Analysis\\$\beta(k) \leq Ce^{-\gamma k}$ (temporal dependence)\\$T_{\text{eff}} = T/(1+2\sum\beta(k))$\\Effective sample size};
+
+    \node[block,fill=orange!8,below=of mixing] (bound) {Rademacher Bound (Thm 2)\\\begin{math}L_{\text{test}} \leq L_{\text{train}} + O(L_\ell\sqrt{\frac{\text{VC-dim}}{T_{\text{eff}}}} + B\sqrt{\frac{\log(1/\delta)}{T_{\text{eff}}}})\end{math}};
+
+    \node[block,fill=purple!8,below=of bound] (closed) {Closed-Form Hyperparameters\\$M^* = \text{round}(\sqrt{T_{\text{eff}}/(KC_{\text{in}}C_{\text{out}})})$\\$r^* = \max(4, C_{\text{in}}/\sqrt{T_{\text{eff}}})$\\$\lambda^* = 0.1/\mathbb{E}[\|\mathbf{x}\|^2]$\\$<0.8\%$ from grid-search optimum};
+
+    \node[block,fill=cyan!8,below=of closed] (init) {Spectral-Balanced Init (Thm 3)\\$\mathbf{W}_{\text{conv}} \sim \mathcal{N}(0,I)$\\$\mathbf{W}_{\text{conv}} \leftarrow \mathbf{W}_{\text{conv}}/\|\mathbf{W}_{\text{conv}}\|_2\cdot\sqrt{2}$\\No warmup, $+42\%$ initial descent};
+
+    \draw[arrow] (dyn) -- (equiv);
+    \draw[arrow] (equiv) -- (mixing);
+    \draw[arrow] (mixing) -- (bound);
+    \draw[arrow] (bound) -- (closed);
+    \draw[arrow] (closed) -- (init);
+\end{tikzpicture}
+\caption{Module 4: Statistical learning theory pipeline. Dynamic convolution is proven equivalent to kernel-space rank-$M$ linear attention (decoupled from $T$). Temporal generalization bound under $\beta$-mixing yields closed-form hyperparameters (differing $<0.8\%$ from grid search). Spectral-Balanced Initialization eliminates warmup and accelerates initial convergence by $+42\%$.}
+\label{fig:stat-learning}
+\end{figure}
+
+% ══════════════════════════════════════════════════════════════════════════
+% FIGURE M5: Cross-Module Synergy Sheaf Diagram
+% ══════════════════════════════════════════════════════════════════════════
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[
+    node distance=1.8cm,
+    mod/.style={rectangle,draw,minimum width=3.5cm,minimum height=1.0cm,align=center,rounded corners=5pt,font=\small,fill=blue!6},
+    bridge/.style={rectangle,draw,minimum width=4.5cm,minimum height=0.6cm,align=center,rounded corners=3pt,font=\footnotesize,fill=green!10},
+    arrow/.style={thick,->,>=stealth,dashed,red!70},
+    bidir/.style={thick,<->,>=stealth,dashed,red!70}
+]
+    \node[mod] (m1) {Module 1\\Differential Geometry\\SE(3)-invariants};
+    \node[mod,right=5.5cm of m1] (m2) {Module 2\\Optimal Transport\\SGW + Grassmann};
+    \node[mod,below=2.5cm of m1] (m3) {Module 3\\Algebraic Topology\\Cup product + PH};
+    \node[mod,right=5.5cm of m3] (m4) {Module 4\\Statistical Learning\\Rademacher bounds};
+
+    \node[bridge,right=0.5cm of m1.east,yshift=0.8cm] (b1) {Bridge 1: Invariants $\to$ OT Anchors ($10^4\times$ error reduction)};
+    \node[bridge,below=0.8cm of m1.south,anchor=north,minimum width=4.5cm] (b2) {Bridge 2: Invariants $\to$ Conflict Detection (FPR $<0.5\%$)};
+    \node[bridge,left=0.5cm of m3.west,yshift=0.8cm] (b3) {Bridge 3: $T_{\text{eff}}$ $\to$ TTA Safety (adaptive bound)};
+    \node[bridge,right=0.5cm of m3.east,yshift=-0.3cm,minimum width=5cm] (b4) {Bridge 4: PH $\to$ Shared Infrastructure ($-37\%$ overhead)};
+
+    \draw[bidir] (m1.east) -- (m2.west);
+    \draw[bidir] (m1.south) -- (m3.north);
+    \draw[bidir] (m3.east) -- (m4.west);
+    \draw[bidir] (m2.south) -- (m4.north);
+
+    \node[font=\footnotesize,below=0.3cm of m4.south,anchor=north,text width=6cm,align=center] {Unified Sheaf of Evidence $\mathcal{E}$ over\\$\mathcal{M} = \mathcal{G}(\text{spatial}) \times \mathcal{T}(\text{temporal}) \times \mathcal{C}(\text{modal})$};
+\end{tikzpicture}
+\caption{Cross-module synergy diagram. The four mathematical modules form a coherent framework with four verified bridges: geometric invariants as OT anchors, invariants for conflict detection, $T_{\text{eff}}$ for TTA safety, and shared persistent homology infrastructure. The unified mathematical object is a sheaf of evidence over the product space of spatial, temporal, and modal domains.}
+\label{fig:cross-module}
+\end{figure}
+
+% ══════════════════════════════════════════════════════════════════════════
+% FIGURE N1: Complete V6 Forward Pass (Neural Network Interaction)
+% ══════════════════════════════════════════════════════════════════════════
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[
+    node distance=0.55cm,
+    layer/.style={rectangle,draw,minimum width=14cm,minimum height=0.65cm,align=center,font=\footnotesize,rounded corners=2pt,fill=gray!5},
+    mathmap/.style={rectangle,draw,minimum width=2.2cm,minimum height=0.6cm,font=\tiny,fill=orange!12,rounded corners=2pt,align=center},
+    arrow/.style={thick,->,>=stealth,shorten >=1pt}
+]
+    % Architecture layers
+    \node[layer,fill=blue!8] (l0) {\textbf{INPUT:} opt($B,T,10,H,W$) \quad sar($B,T,5,H,W$) \quad dem($B,5,H,W$) \quad doy($B,T$)};
+    \node[layer,fill=green!8,below=of l0] (l1) {\textbf{① Early Fusion:} ModalNorm(opt$|$sar$|$dem) $\to$ Concat(20ch) $\to$ Conv$_{1\times1}^{20\to128}$ $\to$ unified(128ch)};
+    \node[layer,fill=cyan!8,below=of l1] (l2) {\textbf{② Encoders:} Optical(SeCo ResNet) $\to$ main(512), p2(256), p3(256) $|$ SAR(IRB+FiLM) $\to$ s1(64),s2(128),s3(512) $|$ DEM: geometric invariants $\to$ dem(128)};
+    \node[layer,fill=yellow!10,below=of l2] (l3) {\textbf{③ DEM 5-Path:} [1] SAR FiLM(s1,s2) $|$ [2] Optical FiLM(main,p2) $|$ [3] Temporal bias $|$ [4] Decoder skip $|$ [5] Spatial Cond};
+    \node[layer,fill=red!8,below=of l3] (l4) {\textbf{④ Multi-Scale Temporal:} s1$\to$TemporalLite(64) $|$ s2$\to$TemporalLite(128) $|$ opt\_p2$\to$TemporalLite(256) $|$ s3$\to$Transformer(512) $|$ opt$\to$Transformer(512)};
+    \node[layer,fill=purple!8,below=of l4] (l5) {\textbf{⑤ 3-Scale Cross-Attention:} H: CrossModalLite(64,1h) $\leftrightarrow$ H/2: CrossModalLite(128,4h) $\leftrightarrow$ H/4: CrossModal(512,8h) $\to$ $f_H,f_{H/2},f_{H/4}$};
+    \node[layer,fill=orange!10,below=of l5] (l6) {\textbf{⑥ Decoder + LateFusion:} CARAFE(skips)+SpatialRefine $\to$ pre\_head(64ch) $|$ 3-Expert vacuity-weighted ensemble};
+    \node[layer,fill=teal!10,below=of l6] (l7) {\textbf{⑦ Multi-Task Heads:} EDL(Crop, main) $|$ LAI(Huber) $|$ Growth(CE) $|$ Boundary(BCE+Dice) $|$ LightScene(Scene+CropMix)};
+
+    % Math module mappings (right side)
+    \node[mathmap,right=0.3cm of l3.east,yshift=0.3cm] (mm1) {Module 1\\DiffGeom};
+    \node[mathmap,right=0.3cm of l4.east] (mm4) {Module 4\\StatLearn};
+    \node[mathmap,right=0.3cm of l5.east,yshift=-0.2cm] (mm2) {Module 2\\OptTransport};
+    \node[mathmap,right=0.3cm of l6.east,yshift=-0.2cm] (mm3) {Module 3\\AlgTopo};
+
+    % Arrows between layers
+    \foreach \i/\j in {0/1,1/2,2/3,3/4,4/5,5/6,6/7} {
+        \draw[arrow,gray] (l\i.south) -- (l\j.north);
+    }
+
+    % Math connections
+    \draw[arrow,dashed,red!60] (mm1.west) -- (l3.east);
+    \draw[arrow,dashed,red!60] (mm4.west) -- (l4.east);
+    \draw[arrow,dashed,red!60] (mm2.west) -- (l5.east);
+    \draw[arrow,dashed,red!60] (mm3.west) -- (l6.east);
+\end{tikzpicture}
+\caption{Complete FusionCropNet V6 forward propagation architecture with mathematical module mapping. Seven processing stages from input to multi-task output. Colored dashed lines map each architectural component to its underlying mathematical theory module.}
+\label{fig:v6-forward}
+\end{figure}
+
+% ══════════════════════════════════════════════════════════════════════════
+% FIGURE N2: DEM 5-Path Injection Diagram
+% ══════════════════════════════════════════════════════════════════════════
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[
+    node distance=1.0cm,
+    block/.style={rectangle,draw,minimum width=2.4cm,minimum height=0.7cm,align=center,font=\small,rounded corners=3pt},
+    path/.style={rectangle,draw,minimum width=2.4cm,minimum height=1.6cm,align=center,font=\footnotesize,rounded corners=4pt},
+    arrow/.style={thick,->,>=stealth}
+]
+    \node[block,fill=yellow!15,minimum width=4cm] (dem) {\textbf{DEM Encoder}\\SIREN $\to$ Geometric Invariants $\to$ CNN\\Output: $\mathbf{f}_{\text{dem}}(B,128,H,W)$};
+
+    \node[path,fill=red!12,below left=1.5cm of dem,xshift=-3cm] (p1) {\textbf{Path \textcircled{1}}\\SAR FiLM\\$\gamma_i(\mathbf{d})\odot\mathbf{s}_i+\beta_i(\mathbf{d})$\\$i\in\{1,2\}$ ($s_1,s_2$)\\[2pt]\textit{scatter correction}};
+    \node[path,fill=blue!12,below=1.5cm of dem] (p2) {\textbf{Path \textcircled{2}}\\Optical FiLM\\$\gamma(\mathbf{d})\odot\mathbf{o}+\beta(\mathbf{d})$\\main \& p2 features\\[2pt]\textit{shadow/atm. correction}};
+    \node[path,fill=green!12,below right=1.5cm of dem,xshift=3cm] (p3) {\textbf{Path \textcircled{3}}\\Temporal Bias\\MLP(AvgPool($\mathbf{d}$))\\$+$ to temporal features\\[2pt]\textit{elevation $\to$ phenology}};
+    \node[path,fill=orange!12,below=1.5cm of p2] (p4) {\textbf{Path \textcircled{4}}\\Decoder Skip\\Conv$_{1\times1}^{128\to64}(\mathbf{d})$\\$\to$ CARAFE input\\[2pt]\textit{terrain prior}};
+    \node[path,fill=purple!12,below=1.5cm of p3] (p5) {\textbf{Path \textcircled{5}}\\Spatial Cond\\Gate$(\mathbf{f},\mathbf{d})\odot$Mix$(\mathbf{f},\mathbf{d})$\\$+ (1-$Gate$)\odot\mathbf{f}$\\[2pt]\textit{terrain-aware fusion}};
+
+    \draw[arrow] (dem.south) -- ++(0,-0.3) -| (p1.north);
+    \draw[arrow] (dem.south) -- (p2.north);
+    \draw[arrow] (dem.south) -- ++(0,-0.3) -| (p3.north);
+    \draw[arrow] (p2.south) -- (p4.north);
+    \draw[arrow] (p3.south) -- (p5.north);
+
+    % Targets
+    \node[font=\footnotesize,below=0.3cm of p1,text width=2.4cm,align=center] {$\to$ SAR Encoder\\s1, s2 stages};
+    \node[font=\footnotesize,below=0.3cm of p2,text width=2.4cm,align=center] {$\to$ Optical Encoder\\main \& p2};
+    \node[font=\footnotesize,below=0.3cm of p3,text width=2.4cm,align=center] {$\to$ Temporal Encoder\\pre-encoding bias};
+    \node[font=\footnotesize,below=0.3cm of p4,text width=2.4cm,align=center] {$\to$ Decoder\\CARAFE skip};
+    \node[font=\footnotesize,below=0.3cm of p5,text width=2.4cm,align=center] {$\to$ Post-Fusion\\spatial gating};
+
+    % New indicators
+    \node[font=\tiny,fill=red!30,above=0.0cm of p1.north,anchor=south] {V5Pro};
+    \node[font=\tiny,fill=green!30,above=0.0cm of p2.north,anchor=south] {V6 NEW};
+    \node[font=\tiny,fill=green!30,above=0.0cm of p3.north,anchor=south] {V6 NEW};
+    \node[font=\tiny,fill=green!30,above=0.0cm of p4.north,anchor=south] {V6 NEW};
+    \node[font=\tiny,fill=red!30,above=0.0cm of p5.north,anchor=south] {V5Pro};
+\end{tikzpicture}
+\caption{DEM five-path injection architecture. Paths \textcircled{1} and \textcircled{5} are inherited from V5Pro; paths \textcircled{2}, \textcircled{3}, and \textcircled{4} are V6 innovations. Each path has a distinct agronomic justification and targets a specific model component.}
+\label{fig:dem-paths}
+\end{figure}
+
+% ══════════════════════════════════════════════════════════════════════════
+% FIGURE N3: TemporalLite Mechanism
+% ══════════════════════════════════════════════════════════════════════════
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[
+    node distance=1.2cm,
+    block/.style={rectangle,draw,minimum width=4cm,minimum height=0.8cm,align=center,font=\small,rounded corners=3pt},
+    arrow/.style={thick,->,>=stealth}
+]
+    \node[block] (in) {Input Sequence $\mathbf{X}\in\mathbb{R}^{N\times T\times D}$\\$N$ spatial positions $\times$ $T$ timesteps $\times$ $D$ channels};
+
+    \node[block,fill=blue!10,below=of in] (reshape) {Reshape $\mathbb{R}^{N\times T\times D} \to \mathbb{R}^{N\times D\times T}$\\(Conv1D format)};
+
+    \node[block,fill=green!10,below=of reshape] (conv) {\textbf{DepthwiseSeparableConv1D}\\in=$D$, out=$D$, kernel=3, groups=$D$\\$O(N\cdot D\cdot T\cdot k)$, params=$D\times k$};
+
+    \node[block,fill=yellow!10,below=of conv] (norm) {LayerNorm($D$) along channel dim\\Stabilize post-convolution distribution};
+
+    \node[block,fill=orange!10,below=of norm] (pool) {\textbf{Learnable Gated Temporal Pooling}\\$\mathbf{y} = \gamma \cdot \frac{1}{T}\sum_{t=1}^T \mathbf{H}_{:,t,:}$\\$\gamma\in\mathbb{R}$: init=1, learnable};
+
+    \node[block,below=of pool] (out) {Output $\mathbf{y}\in\mathbb{R}^{N\times D}$\\Temporally compressed feature};
+
+    \draw[arrow] (in) -- (reshape);
+    \draw[arrow] (reshape) -- (conv);
+    \draw[arrow] (conv) -- (norm);
+    \draw[arrow] (norm) -- (pool);
+    \draw[arrow] (pool) -- (out);
+
+    % Comparison box
+    \node[block,fill=red!5,right=5.5cm of conv,text width=4.5cm,font=\footnotesize]
+        (cmp) {\textbf{vs. Transformer (V5Pro)}\\
+               $O(N\cdot T\cdot D^2 + N\cdot T^2\cdot D)$\\
+               FFN = 99.8\% of FLOPs\\
+               \textbf{vs. Decoupled Attn (orig. V6)}\\
+               Only optimizes 0.2\% of FLOPs\\
+               \textbf{TemporalLite: $\sim48\times$ total speedup}};
+
+    \draw[arrow,dashed,gray] (conv.east) -- (cmp.west);
+\end{tikzpicture}
+\caption{TemporalLite mechanism. Depthwise separable 1D convolution with $k=3$ (covering $\sim$1.5-month phenological window at 15-day revisit) replaces the entire Transformer block including FFN layers. The learnable gate $\gamma$ allows adaptive emphasis of stable vs. transient temporal patterns.}
+\label{fig:temporal-lite}
+\end{figure}
+
+% ══════════════════════════════════════════════════════════════════════════
+% FIGURE N4: 3-Scale Cross-Modal Attention Pyramid
+% ══════════════════════════════════════════════════════════════════════════
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[
+    node distance=1.2cm and 2.0cm,
+    attn/.style={rectangle,draw,minimum width=2.6cm,minimum height=1.5cm,align=center,font=\footnotesize,rounded corners=4pt},
+    feat/.style={rectangle,draw,minimum width=2.2cm,minimum height=0.8cm,align=center,font=\small,rounded corners=2pt},
+    arrow/.style={thick,->,>=stealth},
+    bidir/.style={thick,<->,>=stealth}
+]
+    % Scale 3 (H/4) — top
+    \node[feat,fill=blue!10] (opt_h4) {Optical\\$o\_t$(512, $H_4$,$W_4$)};
+    \node[attn,fill=purple!15,right=of opt_h4] (attn_h4) {H/4 Scale\\\textbf{CrossModal}\\\\8 heads, $d$=512\\Semantic alignment\\~280K params};
+    \node[feat,fill=red!10,right=of attn_h4] (sar_h4) {SAR\\$s3\_t$(512, $H_4$,$W_4$)};
+    \draw[bidir] (opt_h4) -- (attn_h4);
+    \draw[bidir] (attn_h4) -- (sar_h4);
+
+    % Scale 2 (H/2) — middle
+    \node[feat,fill=blue!10,below=1.0cm of opt_h4] (opt_h2) {Optical\\$o2\_t$(128, $H_2$,$W_2$)};
+    \node[attn,fill=cyan!15,right=of opt_h2] (attn_h2) {H/2 Scale\\\textbf{CrossModalLite}\\\\4 heads, $d$=128\\Structure alignment\\~18K params};
+    \node[feat,fill=red!10,right=of attn_h2] (sar_h2) {SAR\\$s2\_t$(128, $H_2$,$W_2$)};
+    \draw[bidir] (opt_h2) -- (attn_h2);
+    \draw[bidir] (attn_h2) -- (sar_h2);
+
+    % Scale 1 (H) — bottom
+    \node[feat,fill=blue!10,below=1.0cm of opt_h2] (opt_h) {Optical\\$o2\_t\!\uparrow$(64, $H$,$W$)};
+    \node[attn,fill=green!15,right=of opt_h] (attn_h) {H Scale\\\textbf{CrossModalLite}\\\\1 head, $d$=64\\Texture alignment\\~1.9K params};
+    \node[feat,fill=red!10,right=of attn_h] (sar_h) {SAR\\$s1\_t$(64, $H$,$W$)};
+    \draw[bidir] (opt_h) -- (attn_h);
+    \draw[bidir] (attn_h) -- (sar_h);
+
+    % Outputs
+    \node[feat,fill=green!8,right=2.0cm of sar_h4] (out4) {$f_{H/4}$\\Decoder input};
+    \node[feat,fill=green!8,right=2.0cm of sar_h2] (out2) {$f_{H/2}$\\Skip};
+    \node[feat,fill=green!8,right=2.0cm of sar_h] (out) {$f_H$\\Skip};
+    \draw[arrow] (sar_h4.east) -- (out4.west);
+    \draw[arrow] (sar_h2.east) -- (out2.west);
+    \draw[arrow] (sar_h.east) -- (out.west);
+
+    % Hierarchical merge arrows
+    \draw[arrow,blue!70] (out.south) -- ++(0,-0.5) -| (attn_h2.south) node[pos=0.7,right,font=\tiny] {$\downarrow$2$\times$};
+    \draw[arrow,blue!70] (out2.south) -- ++(0,-0.5) -| (attn_h4.south west) node[pos=0.8,right,font=\tiny] {$\downarrow$2$\times$};
+
+    % Q source note
+    \node[font=\footnotesize,fill=gray!10,text width=8cm,below=0.5cm of attn_h.north,anchor=north,yshift=-3.5cm]
+        {Q-source: unified(128ch) from Early Fusion $\to$ cloud-robust (SAR info persists in Q even under cloud cover)};
+\end{tikzpicture}
+\caption{Three-scale cross-modal attention pyramid. Optical and SAR features are bidirectionally attended at $H$, $H/2$, and $H/4$ scales, enabling texture-structure-semantic progressive fusion. Higher-resolution outputs are downsampled and merged into lower-resolution layers, ensuring shallow boundary cues guide deep semantic fusion.}
+\label{fig:cross-attention-pyramid}
+\end{figure}
+
+% ══════════════════════════════════════════════════════════════════════════
+% FIGURE N5: Self-Training Loop with Topological Filtering
+% ══════════════════════════════════════════════════════════════════════════
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[
+    node distance=1.3cm,
+    block/.style={rectangle,draw,minimum width=3.5cm,minimum height=0.8cm,align=center,font=\small,rounded corners=3pt},
+    decision/.style={diamond,draw,aspect=2,minimum width=2.5cm,minimum height=0.8cm,align=center,font=\footnotesize,fill=yellow!10},
+    arrow/.style={thick,->,>=stealth}
+]
+    \node[block,fill=gray!10] (unlab) {Unlabeled Data $\mathcal{U}$\\$(B, 10+5+5, H, W)$};
+
+    \node[block,fill=blue!10,below=of unlab] (infer) {Model Inference\\$\boldsymbol{\alpha} = f_\theta(\mathbf{x})$\\$\mathbf{p} = \boldsymbol{\alpha}/S$, $\mathbf{u} = K/S$};
+
+    \node[block,fill=purple!10,below=of infer] (conflict) {Topological Conflict Classification\\\begin{tabular}{c}Noise: $[\omega_1\!\smile\!\omega_2]=0,\kappa<\tau_\kappa$\\Structural: $[\omega_1\!\smile\!\omega_2]\neq 0$\\HighOrder: $\exists p\!\geq\!1,H^p(K)\ni[\eta]\neq0$\end{tabular}};
+
+    \node[decision,below=of conflict] (route) {\small Noise\\$+\;\max(p)>\tau_c$\\$+\;\mathbf{u}<\tau_u$?};
+
+    \node[block,fill=green!10,below=1.8cm of route,xshift=-2.5cm] (accept) {Accept\\Pseudo-Label $\hat{y}$\\$\mathcal{P}_r \gets \mathcal{P}_r \cup \{(\mathbf{x},\hat{y})\}$};
+    \node[block,fill=orange!10,below=1.8cm of route,xshift=2.5cm] (correct) {Structural Conflict?\\Persistent Correction\\$\boldsymbol{\alpha}'=$ PH\_correct($\boldsymbol{\alpha}$)\\If $\max(\mathbf{p}') > \tau_c \to$ Accept};
+
+    \node[block,fill=red!5,below right=1.5cm of route,xshift=2cm] (skip) {HighOrder: Abstain\\($\sim$17\% of vacuity-clean\\pixels detected)};
+
+    \node[block,fill=cyan!10,below=of accept] (train) {Fine-tune with $\mathcal{D}\cup\mathcal{P}_r$\\Relax thresholds:\\$\tau_u\leftarrow\min(0.5,\tau_u+0.05)$\\$\tau_c\leftarrow\max(0.7,\tau_c-0.05)$};
+    \node[block,fill=gray!10,right=3cm of train] (loop) {Next Round\\$r\leftarrow r+1$\\max $R=5$};
+
+    \draw[arrow] (unlab) -- (infer);
+    \draw[arrow] (infer) -- (conflict);
+    \draw[arrow] (conflict) -- (route);
+    \draw[arrow] (route) -- node[left,font=\footnotesize]{Yes} (accept);
+    \draw[arrow] (route) -- node[right,font=\footnotesize]{No $\to$ Check} (correct.west);
+    \draw[arrow] (correct) -- node[right,font=\footnotesize]{Failed $\to$} (skip);
+    \draw[arrow] (accept) -- (train);
+    \draw[arrow] (correct.south) |- (train.east);
+    \draw[arrow] (train) -- (loop);
+    \draw[arrow] (loop.north) -- ++(0,5.5) -| (unlab.east);
+\end{tikzpicture}
+\caption{Self-training loop with topological pseudo-label filtering. Unlike standard vacuity thresholding (binary accept/reject), V6 employs three-way routing based on cohomological conflict classification. Structural conflicts are resolved via persistent homology correction; high-order conflicts (17\% of vacuity-clean pixels) are explicitly rejected, improving pseudo-label precision by $\sim$12\%.}
+\label{fig:self-training}
+\end{figure}
+
+% ══════════════════════════════════════════════════════════════════════════
+% FIGURE N6: 3-Expert LateFusion with Vacuity Weighting
+% ══════════════════════════════════════════════════════════════════════════
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[
+    node distance=1.3cm,
+    expert/.style={rectangle,draw,minimum width=3.0cm,minimum height=1.5cm,align=center,font=\small,rounded corners=4pt},
+    arrow/.style={thick,->,>=stealth}
+]
+    \node[expert,fill=blue!12] (opt) {Expert$_{\text{opt}}$\\$f_{\text{opt}}(\mathbf{x}_{\text{opt}})$\\$\to \mathbf{z}_{\text{opt}}$ (EDL evidence)\\Receives: optical-only features\\$H_4\times W_4$, 512ch};
+    \node[expert,fill=red!12,below=of opt] (sar) {Expert$_{\text{sar}}$\\$f_{\text{sar}}(\mathbf{x}_{\text{sar}})$\\$\to \mathbf{z}_{\text{sar}}$ (EDL evidence)\\Receives: SAR-only features\\$H_4\times W_4$, 512ch};
+    \node[expert,fill=green!12,below=of sar] (fused) {Expert$_{\text{fused}}$\\$f_{\text{fused}}(\mathbf{x}_{\text{fused}})$\\$\to \mathbf{z}_{\text{fused}}$ (EDL evidence)\\Receives: cross-modal fused features\\$H_4\times W_4$, 512ch};
+
+    % Vacuity computation
+    \node[rectangle,draw,fill=yellow!10,minimum width=3.5cm,minimum height=0.6cm,font=\footnotesize,rounded corners=2pt,right=2.5cm of opt] (vopt) {$u_{\text{opt}} = K/\sum(\text{softplus}(z_{\text{opt}}^{(k)})+1)$};
+    \node[rectangle,draw,fill=yellow!10,minimum width=3.5cm,minimum height=0.6cm,font=\footnotesize,rounded corners=2pt,right=2.5cm of sar] (vsar) {$u_{\text{sar}} = K/\sum(\text{softplus}(z_{\text{sar}}^{(k)})+1)$};
+    \node[rectangle,draw,fill=yellow!10,minimum width=3.5cm,minimum height=0.6cm,font=\footnotesize,rounded corners=2pt,right=2.5cm of fused] (vfused) {$u_{\text{fused}} = K/\sum(\text{softplus}(z_{\text{fused}}^{(k)})+1)$};
+    \draw[arrow] (opt) -- (vopt);
+    \draw[arrow] (sar) -- (vsar);
+    \draw[arrow] (fused) -- (vfused);
+
+    % Weight MLP
+    \node[rectangle,draw,fill=purple!10,minimum width=5cm,minimum height=0.8cm,font=\small,align=center,rounded corners=3pt,below=1.2cm of vsar] (mlp) {\textbf{Weight MLP}\\$\mathbf{w} = \text{softmax}(-\text{MLP}([u_{\text{opt}}, u_{\text{sar}}, u_{\text{fused}}]))$};
+    \draw[arrow] (vopt.south) -- ++(0,-0.3) -| (mlp.north);
+    \draw[arrow] (vsar.south) -- (mlp.north);
+    \draw[arrow] (vfused.south) -- ++(0,-0.3) -| (mlp.north);
+
+    % Ensemble
+    \node[rectangle,draw,fill=cyan!10,minimum width=5cm,minimum height=0.7cm,font=\small,align=center,rounded corners=3pt,below=of mlp] (ensemble) {\textbf{Final Ensemble}\\$\mathbf{z}_{\text{final}} = w_{\text{opt}}\mathbf{z}_{\text{opt}} + w_{\text{sar}}\mathbf{z}_{\text{sar}} + w_{\text{fused}}\mathbf{z}_{\text{fused}}$};
+    \draw[arrow] (mlp) -- (ensemble);
+
+    % Missing modality example
+    \node[rectangle,draw,fill=red!5,text width=3.5cm,font=\footnotesize,rounded corners=3pt,right=1.5cm of mlp] (example) {Example: SAR missing\\$u_{\text{sar}}\to 1.0 \implies -u_{\text{sar}}\to -1$\\$\text{softmax}(-u) \to w_{\text{sar}}\to 0$\\Automatic fallback to opt+fused};
+\end{tikzpicture}
+\caption{Three-Expert LateFusion architecture. Each expert independently produces EDL evidence from its modality-specific features. Per-expert vacuity is computed and transformed through a learnable MLP to produce fusion weights via softmax. Missing modalities naturally drive their expert's weight to zero, providing inherent robustness without explicit modality flags.}
+\label{fig:late-fusion}
+\end{figure}
+
+% ══════════════════════════════════════════════════════════════════════════
+% FIGURE N7: Spectral-Balanced Initialization Flow
+% ══════════════════════════════════════════════════════════════════════════
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[
+    node distance=1.3cm,
+    block/.style={rectangle,draw,minimum width=4.5cm,minimum height=0.7cm,align=center,font=\small,rounded corners=3pt},
+    arrow/.style={thick,->,>=stealth}
+]
+    \node[block,fill=blue!8] (theory) {\textbf{Theorem 3 (Module 4): Gradient Stability Condition}\\$\rho_{\max}\cdot\sqrt{\text{Var}[\sigma(u_2)]} + L_\pi^2\cdot\mathbb{E}[\|\mathbf{x}\|^2] < 1$};
+
+    \node[block,fill=green!8,below=of theory] (simplify) {With LayerNorm: $\|\mathbf{W}_{\text{conv}}\|_2 < 2$\\Direct spectral constraint on convolutional weight matrices};
+
+    \node[block,fill=yellow!8,below=of simplify] (init) {\textbf{Spectral-Balanced Initialization}\\\\$\mathbf{W}_{\text{conv}} \sim \mathcal{N}(0, \mathbf{I})$ (random initialization)\\$\mathbf{W}_{\text{conv}} \leftarrow \frac{\mathbf{W}_{\text{conv}}}{\|\mathbf{W}_{\text{conv}}\|_2} \cdot \sqrt{2}$ (spectral normalization)};
+
+    \node[block,fill=orange!8,below=of init] (effect) {\textbf{Effects:}\\\\$\cdot$ Eliminates warmup dependency (5 epochs $\to$ 0)\\$\cdot$ Initial loss descent $+42\%$ vs. Xavier\\$\cdot$ Attention gradient variance $-68\%$\\$\cdot$ 4$\to$32 layer trainability with unified LR\\$\cdot$ Adversarial mAP drop: $12\%\to 4\%$ ($-67\%$)};
+
+    \node[block,fill=purple!8,below=of effect] (compare) {\textbf{Key Results}\\
+        Warmup: 5 epochs $\to$ \textbf{0} $\;|\;$ Init descent: \textbf{$+42\%$}\\
+        Grad variance: \textbf{$-68\%$} $\;|\;$ Adversarial mAP drop: $12\%\to\textbf{4\%}$};
+
+    \draw[arrow] (theory) -- (simplify);
+    \draw[arrow] (simplify) -- (init);
+    \draw[arrow] (init) -- (effect);
+    \draw[arrow] (effect) -- (compare);
+\end{tikzpicture}
+\caption{Spectral-Balanced Initialization pipeline. Derived from the gradient stability condition (Theorem 3, Module 4), spectral normalization of convolutional weight matrices to $\|\mathbf{W}\|_2=\sqrt{2}$ eliminates warmup dependency while improving convergence speed and adversarial robustness.}
+\label{fig:spectral-init}
+\end{figure}
+
+% ══════════════════════════════════════════════════════════════════════════
+% FIGURE N8: Persistent Homology Barcode Visualization
+% ══════════════════════════════════════════════════════════════════════════
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[
+    node distance=1.2cm,
+    block/.style={rectangle,draw,minimum width=3.5cm,minimum height=0.8cm,align=center,font=\small,rounded corners=3pt},
+    arrow/.style={thick,->,>=stealth}
+]
+    \node[block,fill=blue!8] (evidence) {Evidence Mass $\{m(A)\}_{A\subseteq\Theta}$\\as filtration values on $K(\Theta)$};
+
+    \node[block,fill=green!8,below=of evidence] (filtration) {Filtration $\{K_\epsilon\}_{\epsilon>0}$\\$\epsilon$ increasing: $K_{\epsilon_1}\subseteq K_{\epsilon_2}\subseteq\cdots\subseteq K(\Theta)$};
+
+    \node[block,fill=yellow!8,below=of filtration] (barcode) {\textbf{Persistence Barcode $PH_*(K_\epsilon)$}\\
+        \rule{3cm}{0.4pt} \scriptsize Long-lived (robust consensus)\\
+        \textcolor{red}{\rule{0.3cm}{0.4pt}} \scriptsize Short-lived (transient conflict)\\
+        Filtration value: $0 \to \epsilon_{\max}$\\
+        {\fontsize{8}{10}\selectfont 89\% structural conflict recovery}};
+
+    \node[block,fill=orange!8,below=of barcode] (project) {Projection to Long-Lived Span\\$\min_{\omega'}\|\omega'-\omega\|_2$ s.t. $[\omega']\in$Span(long-lived)\\Recover 89\% structural conflict cases};
+
+    \node[block,fill=purple!8,below=of project] (result) {Topologically Corrected Evidence\\$\boldsymbol{\alpha}'$ preserves robust consensus\\prunes transient cohomological noise};
+
+    \draw[arrow] (evidence) -- (filtration);
+    \draw[arrow] (filtration) -- (barcode);
+    \draw[arrow] (barcode) -- (project);
+    \draw[arrow] (project) -- (result);
+\end{tikzpicture}
+\caption{Persistent homology correction pipeline. Evidence masses define a filtration $\{K_\epsilon\}$ on the simplicial complex. Persistent barcodes classify features into long-lived (robust consensus, blue) and short-lived (transient conflict, red). Evidence is projected onto the long-lived subspace, recovering 89\% of structural conflict cases.}
+\label{fig:ph-barcode}
+\end{figure}
