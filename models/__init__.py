@@ -47,6 +47,47 @@ from .heads import (
 )
 from .dem_encoder import DEMEncoder, ThreeWayFusion
 
+# ── V6 Mathematical Theory Modules ──
+from .geometric_invariants import (
+    GeometricInvariantEncoder,
+    geometric_invariant_stack,
+    compute_geometric_invariants,
+    darboux_frame,
+    verify_se3_invariance,
+)
+from .grassmann_ot import (
+    JointOTGrassmannAligner,
+    sliced_gw_distance,
+    grassmann_geodesic_distance,
+    stiefel_admm_solver,
+    geometric_anchor_distance,
+)
+from .siren_tta import (
+    SIRENTTALoss,
+    NTKStabilityMonitor,
+    LRSAAdapter,
+    HMAAdapter,
+    TTAEngine,
+)
+from .topological_evidence import (
+    TopologicalConflictClassifier,
+    dirichlet_to_chain,
+    cup_product,
+    cohomology_conflict_detector,
+    persistent_correction,
+)
+
+# ── V6 Math: P2+P3 Modules ──
+from .siren_dem_encoder import SIRENDEMEncoder, SIRENLayer
+from .tta_safety_monitor import TTASafetyMonitor, TopoEWC
+from .synergy import (
+    persistence_barcode,
+    persistence_threshold_from_barcode,
+    compute_parameter_persistence_importance,
+    gradient_alignment,
+    AdaptiveRegularizationScheduler,
+)
+
 __all__ = [
     # V1
     "FusionCropNet",
@@ -94,6 +135,40 @@ __all__ = [
     "DEMEncoder",
     "ThreeWayFusion",
     "DomainAdapter",
+    # V6 Math: Geometric Invariants
+    "GeometricInvariantEncoder",
+    "geometric_invariant_stack",
+    "compute_geometric_invariants",
+    "darboux_frame",
+    "verify_se3_invariance",
+    # V6 Math: Optimal Transport
+    "JointOTGrassmannAligner",
+    "sliced_gw_distance",
+    "grassmann_geodesic_distance",
+    "stiefel_admm_solver",
+    "geometric_anchor_distance",
+    # V6 Math: TTA
+    "SIRENTTALoss",
+    "NTKStabilityMonitor",
+    "LRSAAdapter",
+    "HMAAdapter",
+    "TTAEngine",
+    # V6 Math: Topological Evidence
+    "TopologicalConflictClassifier",
+    "dirichlet_to_chain",
+    "cup_product",
+    "cohomology_conflict_detector",
+    "persistent_correction",
+    # V6 Math: P2+P3
+    "SIRENDEMEncoder",
+    "SIRENLayer",
+    "TTASafetyMonitor",
+    "TopoEWC",
+    "persistence_barcode",
+    "persistence_threshold_from_barcode",
+    "compute_parameter_persistence_importance",
+    "gradient_alignment",
+    "AdaptiveRegularizationScheduler",
     # V6 Block 9 P3
     "ViTFeaturePyramid",
     "ThreeExpertLateFusion",

@@ -164,23 +164,19 @@ class WindowAttention(nn.Module):
         qkv = self.qkv(x_padded)
         q, k, v = qkv.chunk(3, dim=1)
         
-        q = q.view(B, self.n_heads, C//self.n_heads, Hp, Wp)
-        k = k.view(B, self.n_heads, C//self.n_heads, Hp, Wp)
-        v = v.view(B, self.n_heads, C//self.n_heads, Hp, Wp)
-        
         q = self.window_partition(q, self.window_size)
         k = self.window_partition(k, self.window_size)
         v = self.window_partition(v, self.window_size)
-        
-        q = q.permute(0, 1, 2, 4, 3)
-        k = k.permute(0, 1, 2, 4, 3)
-        v = v.permute(0, 1, 2, 4, 3)
+
+        q = q.permute(0, 1, 3, 2)
+        k = k.permute(0, 1, 3, 2)
+        v = v.permute(0, 1, 3, 2)
         
         attn = torch.matmul(q, k.transpose(-2, -1)) * self.scale
         attn = F.softmax(attn, dim=-1)
         
         out = torch.matmul(attn, v)
-        out = out.permute(0, 1, 2, 4, 3)
+        out = out.permute(0, 1, 3, 2)
         
         out = self.window_reverse(out, self.window_size, Hp, Wp)
         out = self.out_proj(out)
@@ -379,11 +375,14 @@ class DecoderWithSkipConnections(nn.Module):
         super().__init__()
         self.conv1 = ConvBNReLU(in_channels, in_channels//2, k=3, p=1)
         self.conv2 = ConvBNReLU(in_channels//2, in_channels//4, k=3, p=1)
-        
-        self.sar_skip_conv = ConvBNReLU(in_channels//2, in_channels//4, k=1, p=0)
-        self.opt_skip_conv = ConvBNReLU(in_channels//2, in_channels//4, k=1, p=0)
-        
-        self.fusion_conv = ConvBNReLU(in_channels//2, in_channels//4, k=3, p=1)
+
+        # Skip convs take full in_channels (512) from encoder features,
+        # output in_channels//2 (256) to match conv1 output
+        self.sar_skip_conv = ConvBNReLU(in_channels, in_channels//2, k=1, p=0)
+        self.opt_skip_conv = ConvBNReLU(in_channels, in_channels//2, k=1, p=0)
+
+        # x(256) + sar_skip(256) + opt_skip(256) = 768 → 256
+        self.fusion_conv = ConvBNReLU(in_channels//2 * 3, in_channels//2, k=3, p=1)
         
         self.classifier = nn.Sequential(
             ConvBNReLU(in_channels//4, 64, k=3, p=1),
@@ -503,6 +502,12 @@ class FusionCropNet(nn.Module):
         
         opt_skip = opt_intermediates[-2] if len(opt_intermediates) >= 2 else None
         sar_skip = sar_intermediate
+
+        # Aggregate skip features across timesteps: [B*T, C, H, W] → [B, C, H, W]
+        if opt_skip is not None:
+            opt_skip = opt_skip.view(B, T, *opt_skip.shape[1:]).mean(dim=1)
+        if sar_skip is not None:
+            sar_skip = sar_skip.view(B, T, *sar_skip.shape[1:]).mean(dim=1)
         
         logits = self.decoder(refined_feat, sar_skip=sar_skip, opt_skip=opt_skip)
         

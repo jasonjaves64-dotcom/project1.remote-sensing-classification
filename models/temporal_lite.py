@@ -5,6 +5,7 @@ Replaces time_average() on SAR s1(64ch) and s2(128ch) with a learnable
 
 See: V6-时序编码瓶颈-方案评审.md Section 6.4
 """
+import math
 import torch
 import torch.nn as nn
 
@@ -26,6 +27,14 @@ class TemporalLite(nn.Module):
             groups=d_model,     # depthwise
             bias=False
         )
+        # Spectral-Balanced Initialization (Module 4, Theorem 3):
+        # Ensures ||W_conv||_2 < 2 for gradient stability with LayerNorm,
+        # eliminating the need for learning-rate warmup.
+        nn.init.normal_(self.conv.weight)
+        with torch.no_grad():
+            self.conv.weight.data = (
+                self.conv.weight.data / self.conv.weight.data.norm(p=2) * math.sqrt(2.0)
+            )
         self.norm = nn.LayerNorm(d_model)
         self.gate = nn.Parameter(torch.ones(1))
 
